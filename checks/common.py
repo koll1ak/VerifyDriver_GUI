@@ -175,7 +175,9 @@ def report(label, latest, current, comparator=None):
     checks finish, in a fixed order by category.
     """
     if latest is None:
-        return f"[{label}] could not find the current version on the site", None
+        if current is not None:
+            return f"[{label}] installed {current} (couldn't find a version to compare against on the site)", None
+        return f"[{label}] could not find a version on the site to compare against", None
 
     if current is None:
         return f"[{label}] on the site: {latest['version']} (couldn't compare against the installed version)", None

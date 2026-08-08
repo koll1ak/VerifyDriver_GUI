@@ -28,6 +28,7 @@ The date is INFDate in MM-DD-YYYY format.
 """
 
 import re
+import sys
 from datetime import datetime
 
 import requests
@@ -37,8 +38,34 @@ from providers.http_utils import DEFAULT_HEADERS
 
 API_URL = "https://www.asus.com/support/webapi/ProductV2/GetPDDrivers"
 
-# 52 — the code for Windows 11 64-bit in ASUS's system (confirmed on a real request)
-DEFAULT_OS_ID = "52"
+# 52 — Windows 11 64-bit in ASUS's system (confirmed on a real request).
+# 45 — Windows 10 64-bit: not documented anywhere, inferred by sweeping
+# osid values across many real ASUS laptop models — 45 consistently
+# returns real data (with filenames literally containing "Win10_64")
+# for pre-2022/pre-Windows-11-era models, while several 2022+ models
+# return nothing for 45 but do for 52. Same confidence level as the
+# NVIDIA/Acer OS-code detection this mirrors, but ASUS gives no
+# official documentation to cross-check against, unlike those two.
+OS_ID_WINDOWS_10 = "45"
+OS_ID_WINDOWS_11 = "52"
+WINDOWS_11_MIN_BUILD = 22000  # the first build Microsoft calls "Windows 11"
+
+
+def detect_asus_os_id() -> str:
+    """
+    Determines the right osid for the installed Windows version, the
+    same way providers/nvidia.py and providers/acer_support.py do (via
+    sys.getwindowsversion().build). Previously this provider always
+    defaulted to Windows 11's code regardless of the actual installed
+    OS — a real laptop running Windows 10 would silently get Windows 11
+    driver data.
+    """
+    try:
+        build = sys.getwindowsversion().build
+    except AttributeError:
+        return OS_ID_WINDOWS_10  # not Windows — use the default
+    return OS_ID_WINDOWS_11 if build >= WINDOWS_11_MIN_BUILD else OS_ID_WINDOWS_10
+
 
 _VERSION_IN_FILENAME_RE = re.compile(r"_V([\d.]+)_")
 
@@ -61,11 +88,12 @@ class AsusLaptopDriverProvider(DriverProvider):
     same category).
     """
 
-    def __init__(self, model: str, category: str, match_substrings: tuple[str, ...], os_id: str = DEFAULT_OS_ID, name: str = "asus_laptop_driver"):
+    def __init__(self, model: str, category: str, match_substrings: tuple[str, ...], os_id: str | None = None, name: str = "asus_laptop_driver"):
         self.model = model
         self.category = category
         self.match_substrings = match_substrings
-        self.os_id = os_id
+        # if os_id isn't passed explicitly — auto-detect from the system
+        self.os_id = os_id or detect_asus_os_id()
         self.name = name
 
     def matches(self, device: dict) -> bool:
