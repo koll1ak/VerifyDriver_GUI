@@ -9,11 +9,11 @@ hardware.
 
 | Category | Sources |
 |---|---|
-| BIOS | MSI, Gigabyte, ASUS (desktop) · Dell, Acer, ASUS, Lenovo, HP, Huawei (laptops, manual link for Dell/Huawei) · ASRock (desktop, manual link — site now blocked) |
+| BIOS | MSI, Gigabyte, ASUS (desktop) · Dell, Acer, ASUS, Lenovo, HP, MSI, Huawei (laptops, manual link for Dell/Huawei) · ASRock (desktop, manual link — site now blocked) |
 | Chipset | AMD, Intel |
 | Integrated GPU | Intel |
 | GPU | NVIDIA, AMD, Intel |
-| Audio | Motherboard vendor's page (MSI/Gigabyte/ASUS) → Microsoft Update Catalog as fallback · Dell, Acer, ASUS, Lenovo, HP (laptops) · SenaryTech · ASRock (desktop, manual link — site now blocked) |
+| Audio | Motherboard vendor's page (MSI/Gigabyte/ASUS) → Microsoft Update Catalog as fallback · Dell, Acer, ASUS, Lenovo, HP, MSI (laptops) · SenaryTech · ASRock (desktop, manual link — site now blocked) |
 | LAN | Realtek (PCIe + USB), Intel, Acer (Killer/Realtek/Intel) |
 | WiFi | Intel, Realtek, Microsoft Update Catalog (non-Intel chips), ASUS Networking |
 | Bluetooth | Intel, Microsoft Update Catalog (non-Intel chips) |

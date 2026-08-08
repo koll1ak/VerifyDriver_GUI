@@ -14,6 +14,7 @@ from checks.laptop import (
     check_huawei_bios,
     check_lenovo_bios, check_lenovo_audio,
     check_hp_bios, check_hp_audio,
+    check_msi_laptop_bios, check_msi_laptop_audio,
 )
 
 CATEGORY_ORDER = [
@@ -31,6 +32,7 @@ CHECKS = [
     ("BIOS", check_huawei_bios),
     ("BIOS", check_lenovo_bios),
     ("BIOS", check_hp_bios),
+    ("BIOS", check_msi_laptop_bios),
     ("Chipset", check_amd_chipset),
     ("Chipset", check_intel_chipset),
     ("Integrated GPU", check_intel_gpu),
@@ -43,6 +45,7 @@ CHECKS = [
     ("Audio", check_senary_audio),
     ("Audio", check_lenovo_audio),
     ("Audio", check_hp_audio),
+    ("Audio", check_msi_laptop_audio),
     ("LAN", check_realtek_lan),
     ("LAN", check_realtek_usb_lan),
     ("LAN", check_intel_lan),

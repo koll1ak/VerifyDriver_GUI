@@ -11,6 +11,7 @@ from providers.huawei_support import huawei_search_url
 from providers.lenovo_support import LenovoSupportProvider
 from providers.hp_support import HpSupportProvider
 from providers.msi_bios import get_current_bios_version
+from providers.msi_laptop import MsiLaptopBiosProvider, MsiLaptopDriverProvider
 from providers.asus_bios import AsusBiosProvider
 from providers.asus_laptop_driver import AsusLaptopDriverProvider
 
@@ -396,3 +397,57 @@ def check_hp_audio(devices, board, laptop):
     # DriverVersion format, but this hasn't been confirmed against a
     # real installed driver, so no comparison is attempted yet
     return report("HP Audio", latest, current=None)
+
+
+def check_msi_laptop_bios(devices, board, laptop):
+    """
+    MSI laptops only — Win32_BaseBoard is unreliable on laptops (same
+    reason check_bios in checks/bios.py is desktop-only), so this uses
+    the machine's marketing model name via providers/msi_laptop.py
+    instead of the board slug the desktop MSI check uses.
+    NOT VERIFIED on a real device — the confirmed-live API calls are
+    the same ones used successfully for desktop boards, but WMI's exact
+    Model string format on a real MSI laptop isn't confirmed (see
+    providers/msi_laptop.py risk #1).
+
+    Doesn't use laptop_model_if_vendor(laptop, "MSI", ...): same reason
+    as check_hp_bios — "MSI" isn't necessarily a substring of the full
+    Manufacturer string ("Micro-Star International Co., Ltd."), while
+    msi_laptop_model is already correctly gated in laptop_detect.py.
+    """
+    if not laptop.get("is_laptop"):
+        return None
+    model = laptop.get("msi_laptop_model")
+    if model is None:
+        return None
+
+    provider = MsiLaptopBiosProvider(model_slug=model)
+    ok, latest = safe_get_latest("MSI Laptop BIOS", provider)
+    if not ok:
+        return None
+    # no comparison against the installed version — MSI laptop BIOS
+    # versions (e.g. "E1585IMS.11C") don't match the desktop
+    # comparator's "tail after 'v'" format, and no real device is
+    # available to confirm what Windows actually reports here
+    return report("MSI Laptop BIOS", latest, current=None)
+
+
+def check_msi_laptop_audio(devices, board, laptop):
+    """Same as check_msi_laptop_bios, but for the Audio category."""
+    if not laptop.get("is_laptop"):
+        return None
+    model = laptop.get("msi_laptop_model")
+    if model is None:
+        return None
+
+    provider = MsiLaptopDriverProvider(model_slug=model, category_keyword="AUDIO", name="msi_laptop_audio")
+    ok, latest = safe_get_latest("MSI Laptop Audio", provider)
+    if not ok:
+        return None
+
+    current = find_device_driver_version(devices, "10EC", ("AUDIO",)) or \
+        find_device_driver_version(devices, "0BDA", ("AUDIO",))
+
+    # confirmed live the version (e.g. "6.0.9597.1") is in the same
+    # dotted format WMI reports, so a direct comparison is meaningful
+    return report("MSI Laptop Audio", latest, current)

@@ -61,6 +61,7 @@ def get_laptop_info() -> dict:
         "manufacturer": None, "model": None, "dell_service_tag": None,
         "acer_model_name": None, "acer_part_number": None, "acer_serial": None,
         "asus_laptop_model": None, "lenovo_serial": None, "hp_model": None,
+        "msi_laptop_model": None,
     }
     try:
         result = subprocess.run(
@@ -89,6 +90,7 @@ def get_laptop_info() -> dict:
     # "HP" on newer devices, "Hewlett-Packard" on older ones (both confirmed
     # real WMI Manufacturer values used across HP's product history)
     is_hp = "HP" in manufacturer.upper() or "HEWLETT" in manufacturer.upper()
+    is_msi = "MICRO-STAR" in manufacturer.upper() or "MSI" in manufacturer.upper()
 
     return {
         "manufacturer": manufacturer or None,
@@ -103,6 +105,7 @@ def get_laptop_info() -> dict:
         # serial number (see providers/hp_support.py risk #1) — the raw
         # marketing model name is used as a search query instead
         "hp_model": model if (is_hp and model) else None,
+        "msi_laptop_model": extract_msi_laptop_slug(model) if (is_msi and model) else None,
     }
 
 
@@ -147,6 +150,23 @@ def extract_asus_laptop_model(model: str) -> str:
     if "_" in model:
         return model.rsplit("_", 1)[-1].strip()
     return model.strip()
+
+
+def extract_msi_laptop_slug(model: str) -> str:
+    """
+    Same hyphenation pattern confirmed for MSI desktop boards
+    (board_detect.py's _hyphenate_product_name) — "Katana 15 B13VFK
+    (MS-16WK)" -> "KATANA-15-B13VFK". Confirmed live that MSI's laptop
+    API is case-insensitive on this slug, so the casing mismatch
+    against the site's own display casing ("Katana-15-B13VFK") doesn't
+    matter. NOT verified against a real MSI laptop's actual
+    Win32_ComputerSystem.Model string — see providers/msi_laptop.py
+    risk #1: this assumes Model already reports the specific-SKU-level
+    slug the API's "product" param expects (matching how desktop board
+    slugs work), not a family/parent name.
+    """
+    without_suffix = re.sub(r"\s*\([^)]*\)\s*$", "", model).strip()
+    return re.sub(r"\s+", "-", without_suffix).upper()
 
 
 def detect_laptop() -> dict:
