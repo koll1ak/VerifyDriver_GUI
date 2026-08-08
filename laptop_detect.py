@@ -60,7 +60,7 @@ def get_laptop_info() -> dict:
     empty = {
         "manufacturer": None, "model": None, "dell_service_tag": None,
         "acer_model_name": None, "acer_part_number": None, "acer_serial": None,
-        "asus_laptop_model": None, "lenovo_serial": None,
+        "asus_laptop_model": None, "lenovo_serial": None, "hp_model": None,
     }
     try:
         result = subprocess.run(
@@ -86,6 +86,9 @@ def get_laptop_info() -> dict:
     is_acer = "ACER" in manufacturer.upper()
     is_asus = "ASUS" in manufacturer.upper()
     is_lenovo = "LENOVO" in manufacturer.upper()
+    # "HP" on newer devices, "Hewlett-Packard" on older ones (both confirmed
+    # real WMI Manufacturer values used across HP's product history)
+    is_hp = "HP" in manufacturer.upper() or "HEWLETT" in manufacturer.upper()
 
     return {
         "manufacturer": manufacturer or None,
@@ -96,6 +99,10 @@ def get_laptop_info() -> dict:
         "acer_serial": serial if (is_acer and serial) else None,
         "asus_laptop_model": extract_asus_laptop_model(model) if (is_asus and model) else None,
         "lenovo_serial": serial if (is_lenovo and serial) else None,
+        # HP has no simpler single-field ID confirmed without a real
+        # serial number (see providers/hp_support.py risk #1) — the raw
+        # marketing model name is used as a search query instead
+        "hp_model": model if (is_hp and model) else None,
     }
 
 

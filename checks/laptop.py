@@ -9,6 +9,7 @@ from providers.dell_support import dell_drivers_url
 from providers.acer_support import AcerSupportProvider
 from providers.huawei_support import huawei_search_url
 from providers.lenovo_support import LenovoSupportProvider
+from providers.hp_support import HpSupportProvider
 from providers.msi_bios import get_current_bios_version
 from providers.asus_bios import AsusBiosProvider
 from providers.asus_laptop_driver import AsusLaptopDriverProvider
@@ -345,3 +346,53 @@ def check_lenovo_audio(devices, board, laptop):
     if not ok:
         return None
     return report("Lenovo Audio", latest, current=None)
+
+
+def check_hp_bios(devices, board, laptop):
+    """
+    HP laptops only — resolved by searching support.hp.com's own
+    product search with the machine's marketing model name (no simpler
+    ID confirmed without a real serial, see providers/hp_support.py).
+    NOT VERIFIED on a real device, though every API step was confirmed
+    live against a real current HP product.
+
+    Doesn't use laptop_model_if_vendor(laptop, "HP", ...): that helper
+    re-checks the vendor keyword against Manufacturer, but "HP" isn't a
+    substring of "Hewlett-Packard" (the Manufacturer string on older
+    devices) — hp_model is already correctly gated by both spellings in
+    laptop_detect.py, so re-checking here would wrongly skip those.
+    """
+    if not laptop.get("is_laptop"):
+        return None
+    model = laptop.get("hp_model")
+    if model is None:
+        return None
+
+    provider = HpSupportProvider(model_name=model, category="BIOS", name="hp_bios")
+    ok, latest = safe_get_latest("HP BIOS", provider)
+    if not ok:
+        return None
+    # no comparison against the installed version — HP's version is an
+    # alphanumeric build code (e.g. "F.17 Rev.A"), not a dotted number,
+    # same situation as Dell/Gigabyte/ASRock/Lenovo BIOS
+    return report("HP BIOS", latest, current=None)
+
+
+def check_hp_audio(devices, board, laptop):
+    """Same as check_hp_bios, but for the Audio category (see its
+    docstring for why laptop_model_if_vendor isn't used here)."""
+    if not laptop.get("is_laptop"):
+        return None
+    model = laptop.get("hp_model")
+    if model is None:
+        return None
+
+    provider = HpSupportProvider(model_name=model, category="Driver-Audio", name="hp_audio")
+    ok, latest = safe_get_latest("HP Audio", provider)
+    if not ok:
+        return None
+    # confirmed live the version has a dotted-number prefix (e.g.
+    # "6.0.9712.1 Rev.C") that COULD be comparable to WMI's
+    # DriverVersion format, but this hasn't been confirmed against a
+    # real installed driver, so no comparison is attempted yet
+    return report("HP Audio", latest, current=None)
