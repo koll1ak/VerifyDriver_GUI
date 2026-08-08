@@ -1,27 +1,27 @@
 """
-Автоопределение материнской платы: вендор, модель, чипсет.
+Auto-detection of the motherboard: vendor, model, chipset.
 
-Источник — Win32_BaseBoard через WMI. Надёжно работает на DIY-сборках
-(самостоятельно собранный ПК на "голой" плате). На ноутбуках и
-готовых системах (Dell/HP/Lenovo) Win32_BaseBoard часто возвращает
-мусор вроде "Type1ProductConfigId" — там нужен другой источник
-(Win32_ComputerSystem.Manufacturer/Model), это не покрыто.
+Source — Win32_BaseBoard via WMI. Works reliably on DIY builds (a PC
+assembled from a "bare" board). On laptops and pre-built systems
+(Dell/HP/Lenovo) Win32_BaseBoard often returns garbage like
+"Type1ProductConfigId" — a different source is needed there
+(Win32_ComputerSystem.Manufacturer/Model), which isn't covered here.
 
-ВАЖНО: логика для ASUS/Gigabyte/ASRock проверена только на структуре
-их сайтов (реальные страницы server-rendered, разобраны через web_fetch),
-но НЕ проверена на реальном Win32_BaseBoard.Product для этих вендоров —
-в отличие от MSI, где формат подтверждён на реальной машине. Формат
-может отличаться (суффиксы, регистр) — если автоопределение не
-сработает, извлечённые значения стоит проверить вручную через
-`python board_detect.py` и подправить функции normalize_* при необходимости.
+IMPORTANT: the logic for ASUS/Gigabyte/ASRock was only verified against
+the structure of their websites (real server-rendered pages, inspected
+via web_fetch), but NOT verified against a real Win32_BaseBoard.Product
+value for these vendors — unlike MSI, where the format is confirmed on
+an actual machine. The format may differ (suffixes, case) — if
+auto-detection doesn't work, check the extracted values manually via
+`python board_detect.py` and adjust the normalize_* functions if needed.
 """
 
 import re
 import subprocess
 
-# --- Определение вендора платы -------------------------------------------
+# --- Board vendor detection -------------------------------------------
 
-# подстрока в Win32_BaseBoard.Manufacturer -> внутренний код вендора
+# substring in Win32_BaseBoard.Manufacturer -> internal vendor code
 VENDOR_SIGNATURES = {
     "MICRO-STAR": "msi",
     "MSI": "msi",
@@ -30,7 +30,7 @@ VENDOR_SIGNATURES = {
     "ASROCK": "asrock",
 }
 
-# --- Известные чипсеты AMD/Intel и их сокет (для URL на amd.com и ASRock) -
+# --- Known AMD/Intel chipsets and their socket (for amd.com and ASRock URLs) -
 
 AMD_CHIPSET_SOCKETS = {
     # AM5
@@ -38,14 +38,14 @@ AMD_CHIPSET_SOCKETS = {
     "X670E": "am5", "X670": "am5",
     "B850": "am5", "B650E": "am5", "B650": "am5",
     "A620": "am5",
-    # AM4 (легаси, на всякий случай)
+    # AM4 (legacy, just in case)
     "X570": "am4", "X470": "am4", "X370": "am4",
     "B550": "am4", "B450": "am4", "B350": "am4",
     "A520": "am4", "A320": "am4",
 }
 
-# Intel — только для определения family="intel" у ASRock, без построения
-# amd.com-специфичных URL (у Intel своя логика через Download Center)
+# Intel — only used to detect family="intel" for ASRock, no amd.com-specific
+# URL building here (Intel has its own logic via Download Center)
 INTEL_CHIPSET_CODENAMES = {
     "Z890", "B860", "H810",
     "Z790", "B760", "H770", "Q670", "H610",
@@ -60,8 +60,8 @@ CHIPSET_CODENAME_REGEX = re.compile(
 
 def get_motherboard_info() -> dict | None:
     """
-    Возвращает {"manufacturer": ..., "product": ...} из Win32_BaseBoard,
-    либо None, если не удалось получить (например, не Windows).
+    Returns {"manufacturer": ..., "product": ...} from Win32_BaseBoard,
+    or None if it couldn't be obtained (e.g. not Windows).
     """
     ps_command = (
         "Get-CimInstance Win32_BaseBoard | "
@@ -89,7 +89,7 @@ def get_motherboard_info() -> dict | None:
 
 
 def detect_vendor(manufacturer: str) -> str | None:
-    """MSI/ASUS/Gigabyte/ASRock -> внутренний код вендора, иначе None."""
+    """MSI/ASUS/Gigabyte/ASRock -> internal vendor code, otherwise None."""
     manufacturer_upper = manufacturer.upper()
     for signature, vendor_code in VENDOR_SIGNATURES.items():
         if signature in manufacturer_upper:
@@ -99,9 +99,9 @@ def detect_vendor(manufacturer: str) -> str | None:
 
 def _hyphenate_product_name(product: str) -> str:
     """
-    Общая логика для MSI и Gigabyte — оба используют slug вида
-    "ИМЯ-ПЛАТЫ-ЧЕРЕЗ-ДЕФИСЫ" в верхнем регистре, без суффикса с кодом
-    платы в скобках (например "(MS-7E51)").
+    Shared logic for MSI and Gigabyte — both use an uppercase
+    "BOARD-NAME-WITH-HYPHENS" slug, without the board-code suffix in
+    parentheses (e.g. "(MS-7E51)").
     "MAG X870 TOMAHAWK WIFI (MS-7E51)" -> "MAG-X870-TOMAHAWK-WIFI"
     """
     without_suffix = re.sub(r"\s*\([^)]*\)\s*$", "", product).strip()
@@ -118,8 +118,8 @@ def extract_gigabyte_slug(product: str) -> str:
 
 def _strip_suffix(product: str) -> str:
     """
-    Общая логика для ASUS и ASRock — оба используют модель с пробелами
-    как есть в URL, убираем только суффикс в скобках, если он есть.
+    Shared logic for ASUS and ASRock — both use the model with spaces
+    as-is in the URL, we only strip the parenthesized suffix if present.
     """
     return re.sub(r"\s*\([^)]*\)\s*$", "", product).strip()
 
@@ -133,18 +133,18 @@ def extract_asrock_model(product: str) -> str:
 
 
 def extract_chipset_codename(product: str) -> str | None:
-    """Ищет в имени платы известное название чипсета (X870, B650, ...)."""
+    """Looks for a known chipset name (X870, B650, ...) in the board name."""
     match = CHIPSET_CODENAME_REGEX.search(product.upper())
     return match.group(1) if match else None
 
 
 def detect_chipset_family(chipset_codename: str | None) -> str:
-    """AMD/Intel — нужно ASRock для сегмента пути /mb/<family>/... на сайте."""
+    """AMD/Intel — needed by ASRock for the /mb/<family>/... path segment on the site."""
     if chipset_codename in AMD_CHIPSET_SOCKETS:
         return "amd"
     if chipset_codename in INTEL_CHIPSET_CODENAMES:
         return "intel"
-    return "amd"  # по умолчанию — самый частый случай
+    return "amd"  # default — the most common case
 
 
 def build_amd_chipset_page_url(chipset_codename: str) -> str | None:
@@ -159,7 +159,7 @@ def build_amd_chipset_page_url(chipset_codename: str) -> str | None:
 
 def detect_board() -> dict:
     """
-    Главная функция: возвращает всё, что удалось определить.
+    Main function: returns everything that could be determined.
     {
         "vendor": "msi" | "asus" | "gigabyte" | "asrock" | None,
         "manufacturer_raw": str | None,
@@ -168,9 +168,9 @@ def detect_board() -> dict:
         "gigabyte_slug": str | None,
         "asus_model": str | None,
         "asrock_model": str | None,
-        "chipset_codename": str | None,   # например "X870"
+        "chipset_codename": str | None,   # e.g. "X870"
         "chipset_family": str,            # "amd" | "intel"
-        "amd_chipset_url": str | None,    # готовый URL для AmdChipsetProvider
+        "amd_chipset_url": str | None,    # ready-made URL for AmdChipsetProvider
     }
     """
     info = get_motherboard_info()

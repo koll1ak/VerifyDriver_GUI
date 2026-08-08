@@ -1,52 +1,54 @@
 """
-Провайдер для BIOS/Audio-драйверов с сайта Lenovo (pcsupport.lenovo.com).
+Provider for BIOS/Audio drivers from the Lenovo site (pcsupport.lenovo.com).
 
-НЕ ПРОВЕРЕНО НА РЕАЛЬНОМ УСТРОЙСТВЕ (как и providers/dell_support.py) —
-у автора нет Lenovo-ноутбука под рукой. В отличие от Dell, здесь хотя бы
-подтверждён реальный формат обоих API-эндпоинтов и структура ответа — по
-опубликованным рабочим инструментам сторонних разработчиков (не просто
-предположение по документации).
+NOT VERIFIED ON A REAL DEVICE (same as providers/dell_support.py) — the
+author doesn't have a Lenovo laptop on hand. Unlike Dell, here at least
+the real format of both API endpoints and the response structure are
+confirmed — from published working tools built by third-party
+developers (not just a guess based on documentation).
 
-Два шага, как это делает сам сайт (страница — тяжёлое JS-приложение
-(Angular), содержимого нет в исходном HTML, всё подгружается через API
-уже после рендера — подтверждено: обычный запрос отдаёт только каркас
-страницы без единого драйвера):
+Two steps, the way the site itself does it (the page is a heavy JS app
+(Angular), there's no content in the source HTML, everything loads via
+the API after rendering — confirmed: a plain request returns only the
+page skeleton with not a single driver in it):
 
-1. GET https://pcsupport.lenovo.com/{country}/{lang}/api/v4/mse/getproducts?productId=<серийник>
-   Серийник — Win32_BIOS.SerialNumber (на технике Lenovo это и есть
-   серийный номер устройства, используется как есть). Этот же паттерн
-   использует сторонний Get-LenovoWarranty.ps1 (KelvinTegelaar) для
-   поиска гарантии по серийнику: `$req.id` из ответа используется как
-   готовый путь к странице продукта — берём это же поле как slug для
-   второго запроса.
+1. GET https://pcsupport.lenovo.com/{country}/{lang}/api/v4/mse/getproducts?productId=<serial>
+   The serial is Win32_BIOS.SerialNumber (on Lenovo hardware this is
+   the device's serial number, used as-is). The same pattern is used by
+   the third-party Get-LenovoWarranty.ps1 (KelvinTegelaar) to look up
+   warranty info by serial: `$req.id` from the response is used as the
+   ready-made path to the product page — we take that same field as the
+   slug for the second request.
 
-2. GET https://pcsupport.lenovo.com/{country}/{lang}/api/v4/downloads/drivers?productId=<slug из шага 1>
-   Формат URL и структура ответа подтверждены рабочим публичным скриптом
-   (lenovoDriverDownloader.py, Gictorbit, gist.github.com) — реальный
-   пример: ...productId=laptops-and-netbooks/legion-series/legion-y540-15irh-pg0/81sy
-   Ответ: body.DownloadItems — список пакетов, у каждого Category.Name
-   (категория, например "BIOS"/"Audio Driver") и Files — список файлов
-   с полями Name/URL/TypeString. Явного поля версии в подтверждённом
-   примере не было — извлекаем её из Name регэкспом (тот же приём, что
-   в providers/dell_support.py и providers/asrock_driver.py).
+2. GET https://pcsupport.lenovo.com/{country}/{lang}/api/v4/downloads/drivers?productId=<slug from step 1>
+   The URL format and response structure are confirmed by a working
+   public script (lenovoDriverDownloader.py, Gictorbit, gist.github.com)
+   — a real example: ...productId=laptops-and-netbooks/legion-series/legion-y540-15irh-pg0/81sy
+   Response: body.DownloadItems — a list of packages, each with
+   Category.Name (the category, e.g. "BIOS"/"Audio Driver") and Files —
+   a list of files with Name/URL/TypeString fields. There was no
+   explicit version field in the confirmed example — we extract it from
+   Name with a regex (the same trick used in providers/dell_support.py
+   and providers/asrock_driver.py).
 
-Риски, которые стоит перепроверить при первом реальном запуске:
-1. Lenovo прикрыт Akamai Bot Manager (подтверждено сторонним сервисом
-   обхода Piloterr, который прямо описывает это на своей странице) —
-   поэтому здесь сразу используется curl_cffi с impersonate="chrome",
-   а не как запасной план (в отличие от Dell, где это только риск).
-2. Поле со slug в ответе getproducts может называться не "Id"/"id" для
-   каких-то моделей — проверяем оба варианта написания, но если пусто —
-   стоит свериться через DevTools на реальном устройстве.
-3. Категория в Category.Name может называться иначе, чем просто "BIOS"/
-   "Audio" (например "Audio Driver", "System BIOS Update") — сравнение
-   сделано как "искомая строка — подстрока названия категории" без учёта
-   регистра, чтобы это пережить.
-4. Сравнение с установленной версией не делаем (current=None) — как и у
-   Dell/Gigabyte/ASRock, неизвестно, в каком формате Windows покажет
-   версию BIOS/Audio для сравнения именно с тем, что отдаёт сайт Lenovo.
+Risks worth double-checking on the first real run:
+1. Lenovo is behind Akamai Bot Manager (confirmed by a third-party
+   bypass service, Piloterr, which describes this directly on its page)
+   — so curl_cffi with impersonate="chrome" is used from the start here,
+   not as a fallback plan (unlike Dell, where it's only a risk).
+2. The field carrying the slug in the getproducts response might not be
+   named "Id"/"id" for some models — we check both spellings, but if
+   it's empty, it's worth checking via DevTools on a real device.
+3. The category in Category.Name might be named differently than just
+   "BIOS"/"Audio" (e.g. "Audio Driver", "System BIOS Update") — the
+   comparison is done as "the search string is a substring of the
+   category name", case-insensitive, to survive that.
+4. We don't compare against the installed version (current=None) — same
+   as with Dell/Gigabyte/ASRock, it's unknown what format Windows would
+   show the BIOS/Audio version in, for comparing against what the
+   Lenovo site returns.
 
-Установка: pip install curl_cffi (уже требуется для MSI).
+Install: pip install curl_cffi (already required for MSI).
 """
 
 import re
@@ -65,8 +67,8 @@ _DATE_RE = re.compile(r"\d{4}-\d{1,2}-\d{1,2}|\d{1,2}/\d{1,2}/\d{4}")
 
 class LenovoSupportProvider(DriverProvider):
     """
-    category: подстрока для поиска в Category.Name ("BIOS" или "Audio"),
-    без учёта регистра.
+    category: a substring to search for in Category.Name ("BIOS" or
+    "Audio"), case-insensitive.
     """
 
     def __init__(self, serial: str, category: str, country: str = "us", lang: str = "en", name: str = "lenovo_support"):
@@ -77,8 +79,9 @@ class LenovoSupportProvider(DriverProvider):
         self.name = name
 
     def matches(self, device: dict) -> bool:
-        # не участвует в обходе PnP-устройств — как Dell/Acer, вызывается
-        # напрямую из checks/laptop.py по факту вендора ноутбука
+        # doesn't participate in the PnP device scan — like Dell/Acer,
+        # it's called directly from checks/laptop.py based on the
+        # laptop's vendor
         return False
 
     def _resolve_product_slug(self) -> str | None:
@@ -89,14 +92,14 @@ class LenovoSupportProvider(DriverProvider):
         )
         resp.raise_for_status()
         data = resp.json()
-        # поле встречается в ответах сторонних инструментов и как "Id",
-        # и как "id" в зависимости от эндпоинта — проверяем оба
+        # this field appears in third-party tools' responses as both
+        # "Id" and "id" depending on the endpoint — check both
         return data.get("Id") or data.get("id") or None
 
     def get_latest(self, device: dict = None) -> dict | None:
         slug = self._resolve_product_slug()
         if slug is None:
-            return None  # не удалось найти продукт по серийнику
+            return None  # couldn't find the product by serial number
 
         url = DOWNLOADS_URL.format(country=self.country, lang=self.lang)
         resp = requests.get(
@@ -131,4 +134,4 @@ class LenovoSupportProvider(DriverProvider):
                 "page_url": page_url,
             }
 
-        return None  # категория не найдена среди пакетов этой модели
+        return None  # category not found among this model's packages

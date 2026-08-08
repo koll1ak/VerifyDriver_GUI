@@ -7,10 +7,11 @@ from net_utils import classify_error
 
 def find_device(devices, predicate):
     """
-    Возвращает первое устройство из списка, подходящее под predicate.
-    predicate — либо объект с методом matches(device) (Provider), либо
-    обычная функция device -> bool. Общий хелпер вместо повторяющегося
-    "for device in devices: if ...matches(device): ..." в каждой проверке.
+    Returns the first device from the list matching predicate.
+    predicate is either an object with a matches(device) method (a
+    Provider) or a plain device -> bool function. A shared helper
+    instead of repeating "for device in devices: if ...matches(device):
+    ..." in every check.
     """
     match_fn = predicate.matches if hasattr(predicate, "matches") else predicate
     for device in devices:
@@ -21,24 +22,25 @@ def find_device(devices, predicate):
 
 def safe_get_latest(label: str, provider, device=None):
     """
-    Оборачивает provider.get_latest() — заменяет повторяющийся try/except
-    в каждой check_*-функции. Если провайдер бросает исключение — пишет
-    в stderr и возвращает (False, None) (сигнал молча пропустить проверку).
-    Если отработал без ошибок (в том числе если сам провайдер честно не
-    нашёл ничего и вернул None) — возвращает (True, latest); True здесь
-    означает именно "выполнилось без сбоя", а не "что-то нашлось" — latest
-    может быть None, и это нормально обрабатывается дальше через report().
+    Wraps provider.get_latest() — replaces the repeated try/except in
+    every check_* function. If the provider raises, prints to stderr and
+    returns (False, None) (a signal to silently skip the check). If it
+    ran without errors (including the case where the provider itself
+    genuinely found nothing and returned None) — returns (True, latest);
+    True here means exactly "ran without failing", not "found
+    something" — latest can be None, and that's handled normally
+    downstream by report().
     """
     try:
         latest = provider.get_latest(device) if device is not None else provider.get_latest()
     except Exception as e:
-        print(f"[{label}] ошибка: {classify_error(e)}", file=sys.stderr)
+        print(f"[{label}] error: {classify_error(e)}", file=sys.stderr)
         return False, None
     return True, latest
 
 
 def find_device_driver_version(devices, vendor_id: str, name_keywords):
-    """Ищет среди устройств совпадение по VendorID и подстроке в имени, возвращает DriverVersion."""
+    """Looks among devices for a match on VendorID and a name substring, returns DriverVersion."""
     device = find_device(
         devices,
         lambda d: d.get("VendorID") == vendor_id and any(
@@ -50,9 +52,9 @@ def find_device_driver_version(devices, vendor_id: str, name_keywords):
 
 def laptop_model_if_vendor(laptop: dict, vendor_keyword: str, model_field: str):
     """
-    Общий шаблон для vendor-специфичных проверок ноутбуков: если это
-    ноутбук нужного вендора и модель определена — возвращает модель,
-    иначе None (сигнал молча пропустить проверку).
+    Shared pattern for vendor-specific laptop checks: if this is a
+    laptop from the given vendor and the model was determined — returns
+    the model, otherwise None (a signal to silently skip the check).
     """
     if not laptop.get("is_laptop"):
         return None
@@ -64,11 +66,10 @@ def laptop_model_if_vendor(laptop: dict, vendor_keyword: str, model_field: str):
 
 def overall_drivers_page_url(board: dict, laptop: dict) -> str | None:
     """
-    Общая страница со всеми драйверами устройства целиком — ноутбука
-    известного вендора (Acer/Dell) или материнской платы (MSI/Gigabyte/
-    ASRock/ASUS) на десктопе. Полезно как единая ссылка для ручной
-    проверки в конце прогона, отдельно от конкретных проверок по
-    компонентам.
+    The overall page with all drivers for the device as a whole — a
+    known-vendor laptop (Acer/Dell) or a motherboard (MSI/Gigabyte/
+    ASRock/ASUS) on desktop. Useful as a single link for a manual check
+    at the end of the run, separate from the specific per-component checks.
     """
     if laptop.get("is_laptop"):
         manufacturer = (laptop.get("manufacturer") or "").upper()
@@ -88,7 +89,7 @@ def overall_drivers_page_url(board: dict, laptop: dict) -> str | None:
 
         return None
 
-    # десктоп — страница материнской платы у соответствующего вендора
+    # desktop — the motherboard page at the corresponding vendor
     vendor = board.get("vendor")
 
     if vendor == "msi" and board.get("msi_slug"):
@@ -109,7 +110,7 @@ def overall_drivers_page_url(board: dict, laptop: dict) -> str | None:
 
 
 def _parse_version_tuple(v: str):
-    """Версия как тюпл чисел для численного сравнения (не строкового)."""
+    """Version as a tuple of numbers for numeric comparison (not string comparison)."""
     try:
         return tuple(int(p) for p in v.split("."))
     except (ValueError, AttributeError):
@@ -118,29 +119,30 @@ def _parse_version_tuple(v: str):
 
 def no_downgrade_match(current: str, latest: str) -> bool:
     """
-    Считает версии "совпадающими" (не предлагать обновление), если
-    установленная версия ЧИСЛЕННО не старше версии на сайте — то есть
-    если сайт отстаёт от того, что уже реально стоит (типичная ситуация:
-    OEM-страница обновляется реже, чем Windows Update/сам производитель
-    чипа), мы никогда не порекомендуем "откатиться" на более старую версию.
+    Considers the versions "matching" (don't suggest an update) if the
+    installed version is NUMERICALLY not older than the version on the
+    site — i.e. if the site lags behind what's actually already
+    installed (a common situation: an OEM page updates less often than
+    Windows Update/the chip maker itself), we never recommend
+    "downgrading" to an older version.
     """
     if not current or not latest:
         return False
     current_t = _parse_version_tuple(current)
     latest_t = _parse_version_tuple(latest)
     if current_t is None or latest_t is None:
-        return current == latest  # не смогли распарсить как числа — сравниваем как строки
+        return current == latest  # couldn't parse as numbers — compare as strings
     return current_t >= latest_t
 
 
 def parse_flexible_date(raw: str):
     """
-    Пытается распарсить дату в разных форматах, которые встречаются:
-    - сайт Realtek: "2026/07/30"
-    - WMI DriverDate (сырой CIM-формат): "20220516000000.000000-000"
-    - WMI DriverDate (если PowerShell уже сконвертировал в ISO): "2022-05-16T00:00:00"
-    - WMI DriverDate через ConvertTo-Json (ASP.NET-стиль, подтверждено на
-      реальном устройстве): "/Date(1783123200000)/" — Unix-время в мс
+    Tries to parse a date in the various formats that come up:
+    - Realtek's site: "2026/07/30"
+    - WMI DriverDate (raw CIM format): "20220516000000.000000-000"
+    - WMI DriverDate (if PowerShell already converted it to ISO): "2022-05-16T00:00:00"
+    - WMI DriverDate via ConvertTo-Json (ASP.NET style, confirmed on a
+      real device): "/Date(1783123200000)/" — Unix time in ms
     """
     if not raw:
         return None
@@ -155,7 +157,7 @@ def parse_flexible_date(raw: str):
 
     for fmt in ("%Y/%m/%d", "%Y%m%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
         try:
-            # для WMI сырого формата берём только первые 8 символов (YYYYMMDD)
+            # for the raw WMI format take only the first 8 characters (YYYYMMDD)
             candidate = raw[:8] if fmt == "%Y%m%d" else raw
             return datetime.strptime(candidate, fmt)
         except (ValueError, TypeError):
@@ -165,24 +167,24 @@ def parse_flexible_date(raw: str):
 
 def report(label, latest, current, comparator=None):
     """
-    Общая логика сравнения. Возвращает (display_line, update_line):
-    display_line — строка статуса для показа в общем отчёте (всегда есть),
-    update_line — строка для секции "Найдены обновления" (или None, если
-    обновление не найдено/сверка невозможна). Не печатает сама — печать
-    делает main() после того, как все параллельные проверки завершатся,
-    в фиксированном порядке по категориям.
+    Shared comparison logic. Returns (display_line, update_line):
+    display_line — a status line for the overall report (always
+    present), update_line — a line for the "Updates available" section
+    (or None if no update was found/comparison wasn't possible). Doesn't
+    print by itself — printing happens in main() after all the parallel
+    checks finish, in a fixed order by category.
     """
     if latest is None:
-        return f"[{label}] не удалось найти актуальную версию на сайте", None
+        return f"[{label}] could not find the current version on the site", None
 
     if current is None:
-        return f"[{label}] на сайте: {latest['version']} (установленную версию сверить не удалось)", None
+        return f"[{label}] on the site: {latest['version']} (couldn't compare against the installed version)", None
 
     is_match = comparator(current, latest["version"]) if comparator else (current == latest["version"])
 
     if is_match:
-        return f"[{label}] актуально ({latest['version']})", None
+        return f"[{label}] up to date ({latest['version']})", None
 
     display_url = latest.get("page_url") or latest.get("url", "")
-    update_line = f"{label}: установлено {current} -> доступно {latest['version']} ({display_url})"
-    return f"[{label}] ОБНОВЛЕНИЕ ДОСТУПНО: {current} -> {latest['version']}", update_line
+    update_line = f"{label}: installed {current} -> available {latest['version']} ({display_url})"
+    return f"[{label}] UPDATE AVAILABLE: {current} -> {latest['version']}", update_line

@@ -1,14 +1,14 @@
 """
-Провайдер AMD Chipset Software.
+AMD Chipset Software provider.
 
-Страница поддержки чипсета (support.amd.com) отдаёт список драйверов
-прямо в серверном HTML — никакого скрытого API/JS не нужно. Каждый
-драйвер — это <article class="driver-download-details"> с <h4>-названием
-и парой блоков col-6 col-lg (Revision Number / File Size / Release Date)
-плюс кнопкой Download.
+The chipset support page (support.amd.com) returns the driver list
+directly in server-rendered HTML — no hidden API/JS needed. Each driver
+is an <article class="driver-download-details"> with an <h4> title and a
+pair of col-6 col-lg blocks (Revision Number / File Size / Release Date)
+plus a Download button.
 
-Страница разбита на аккордеоны по ОС (Windows 11 / Windows 10) — данные
-внутри обычно идентичны, берём первое совпадение.
+The page is split into accordions by OS (Windows 11 / Windows 10) — the
+data inside is usually identical, we take the first match.
 """
 
 import re
@@ -22,8 +22,9 @@ from providers.base import DriverProvider
 CHIPSET_PAGE_URL = "https://www.amd.com/en/support/downloads/drivers.html/chipsets/am5/x870.html"
 DRIVER_NAME = "AMD Chipset Drivers"
 
-# PowerShell: ищем версию установленного пакета "AMD Chipset Software"
-# в записях Uninstall реестра (там же, где его видит "Установка и удаление программ")
+# PowerShell: look for the installed "AMD Chipset Software" package
+# version in the registry's Uninstall entries (the same place "Add or
+# remove programs" reads it from)
 _GET_INSTALLED_VERSION_PS = (
     "Get-ItemProperty "
     "'HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*', "
@@ -35,7 +36,7 @@ _GET_INSTALLED_VERSION_PS = (
 
 
 def get_current_amd_chipset_version() -> str | None:
-    """Версия установленного пакета AMD Chipset Software (из реестра Uninstall)."""
+    """The version of the installed AMD Chipset Software package (from the Uninstall registry key)."""
     result = subprocess.run(
         ["powershell", "-NoProfile", "-Command", _GET_INSTALLED_VERSION_PS],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
@@ -45,20 +46,21 @@ def get_current_amd_chipset_version() -> str | None:
 
 from providers.http_utils import DEFAULT_HEADERS, DEFAULT_TIMEOUT
 
-# без UA страница иногда отдаёт урезанный ответ через Akamai
+# without a UA the page sometimes returns a stripped-down response via Akamai
 HEADERS = DEFAULT_HEADERS
 
 
 class AmdChipsetProvider(DriverProvider):
     """
-    Универсальный провайдер для страниц amd.com/en/support/downloads/drivers.html/...
-    Работает и для chipset-страниц, и для страниц видеокарт (Radeon) —
-    структура HTML одна и та же на всём сайте, отличаются только page_url,
-    driver_name и формат самого номера версии.
+    A general-purpose provider for amd.com/en/support/downloads/drivers.html/...
+    pages. Works for both chipset pages and graphics card (Radeon) pages
+    — the HTML structure is the same across the site, only page_url,
+    driver_name, and the format of the version number itself differ.
 
-    version_regex: если версия дана не в чистом виде (например
-    "Adrenalin 26.5.2 (WHQL Recommended)" у видеокарт вместо "8.07.16.1035"
-    у чипсета), передаётся regex для извлечения номера из текста.
+    version_regex: if the version isn't given in a plain form (e.g.
+    "Adrenalin 26.5.2 (WHQL Recommended)" for graphics cards instead of
+    "8.07.16.1035" for chipsets), a regex is passed to extract the
+    number from the text.
     """
 
     name = "amd_chipset"
@@ -115,10 +117,10 @@ class AmdChipsetProvider(DriverProvider):
                 "url": download_link["href"] if download_link else None,
             }
 
-        # запасной путь: некоторые разделы сайта (например страницы
-        # процессоров/APU, в отличие от chipset-страниц) используют другую
-        # структуру DOM без <article class="driver-download-details"> —
-        # ищем по тексту страницы вместо конкретных тегов/классов
+        # fallback path: some sections of the site (e.g. processor/APU
+        # pages, unlike chipset pages) use a different DOM structure
+        # without <article class="driver-download-details"> — search by
+        # the page text instead of specific tags/classes
         return self._extract_via_text_fallback(soup)
 
     def _extract_via_text_fallback(self, soup) -> dict | None:
@@ -130,7 +132,7 @@ class AmdChipsetProvider(DriverProvider):
         except ValueError:
             return None
 
-        window = lines[name_idx : name_idx + 20]  # несколько строк после названия драйвера
+        window = lines[name_idx : name_idx + 20]  # a few lines after the driver name
         window_text = " ".join(window)
 
         revision = None

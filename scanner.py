@@ -1,6 +1,6 @@
 """
-Сбор списка установленных устройств и версий драйверов через WMI.
-Работает только на Windows (использует powershell.exe).
+Collects the list of installed devices and driver versions via WMI.
+Works only on Windows (uses powershell.exe).
 """
 
 import json
@@ -15,10 +15,11 @@ PS_COMMAND = (
     "ConvertTo-Json -Depth 3"
 )
 
-# Get-PnpDevice видит устройства, которые Win32_PnPSignedDriver иногда
-# пропускает — в частности отдельные "под-функции" составных USB-устройств.
-# Без -PresentOnly (или с -PresentOnly, но перебирая и отключённые статусы),
-# чтобы поймать устройство, даже если оно сейчас отключено в Windows.
+# Get-PnpDevice sees devices that Win32_PnPSignedDriver sometimes misses —
+# in particular individual "sub-functions" of composite USB devices.
+# Without -PresentOnly (or with -PresentOnly but iterating disabled
+# statuses too), so we can catch a device even if it's currently disabled
+# in Windows.
 PS_COMMAND_PNP_FALLBACK = (
     "Get-PnpDevice | "
     "Where-Object {{ $_.InstanceId -match '{pattern}' }} | "
@@ -40,7 +41,7 @@ VEN_DEV_RE = re.compile(
 
 def get_installed_devices() -> list[dict]:
     """
-    Возвращает список устройств вида:
+    Returns a list of devices shaped like:
     {
         "DeviceName": "NVIDIA GeForce RTX 5080",
         "DeviceID": "PCI\\VEN_10DE&DEV_2704&...",
@@ -82,12 +83,12 @@ def get_installed_devices() -> list[dict]:
 
 def get_devices_by_id_pattern(instance_id_regex: str) -> list[dict]:
     """
-    Резервный поиск через Get-PnpDevice для устройств, которые
-    Win32_PnPSignedDriver не показывает (составные USB под-функции и т.п.).
-    Ищет ВСЕ устройства с этим паттерном, включая отключённые (без
-    -PresentOnly) — поле Status покажет, включено ли устройство.
-    instance_id_regex — regex-паттерн для фильтрации InstanceId на стороне
-    PowerShell (например "VID_0BDA").
+    Fallback lookup via Get-PnpDevice for devices that
+    Win32_PnPSignedDriver doesn't show (composite USB sub-functions, etc.).
+    Searches ALL devices matching this pattern, including disabled ones
+    (no -PresentOnly) — the Status field shows whether the device is enabled.
+    instance_id_regex — a regex pattern used to filter InstanceId on the
+    PowerShell side (e.g. "VID_0BDA").
     """
     ps_command = PS_COMMAND_PNP_FALLBACK.format(pattern=instance_id_regex)
     result = subprocess.run(
@@ -122,14 +123,14 @@ def get_devices_by_id_pattern(instance_id_regex: str) -> list[dict]:
 if __name__ == "__main__":
     import sys
 
-    # на некоторых системах (не-UTF8 локаль консоли) вывод может содержать
-    # символы, которых нет в кодировке консоли — переключаем stdout на
-    # UTF-8 с заменой нечитаемых символов вместо падения
+    # on some systems (non-UTF8 console locale) output may contain
+    # characters not present in the console encoding — switch stdout to
+    # UTF-8 with replacement of unreadable characters instead of crashing
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
     if len(sys.argv) > 1:
-        # python scanner.py VID_0BDA — точечный поиск по паттерну,
-        # включая отключённые устройства (полезно для отладки)
+        # python scanner.py VID_0BDA — targeted lookup by pattern,
+        # including disabled devices (useful for debugging)
         pattern = sys.argv[1]
         for d in get_devices_by_id_pattern(pattern):
             print(f"{d['DeviceName']} | VEN_{d['VendorID']} | ver={d['DriverVersion']} | status={d.get('Status')}")

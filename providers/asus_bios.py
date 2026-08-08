@@ -1,20 +1,20 @@
 """
-Провайдер BIOS для плат ASUS.
+BIOS provider for ASUS boards.
 
-Страница поддержки — React-приложение с CSS Modules, но server-rendered
-(весь контент есть в исходном HTML, включая записи, скрытые под
-"Show More" — они просто visually collapsed через CSS, не lazy-loaded).
+The support page is a React app with CSS Modules, but server-rendered
+(all the content is in the source HTML, including entries hidden under
+"Show More" — they're just visually collapsed via CSS, not lazy-loaded).
 
     https://www.asus.com/us/supportonly/<MODEL>/helpdesk_bios/
 
-<MODEL> — точное имя платы с пробелами (например
-"rog strix x870-i gaming wifi"), регистр в URL не важен.
+<MODEL> — the exact board name with spaces (e.g.
+"rog strix x870-i gaming wifi"), case doesn't matter in the URL.
 
-ВАЖНО: классы вида "ProductSupportDriverBIOS__title__3yZVA" содержат
-хэш CSS-модуля, который может смениться при следующем деплое сайта ASUS.
-Поэтому здесь ищем по регулярке на стабильную часть имени класса
-(до второго "__"), а не по классу целиком — так парсер меньше шансов
-сломается при косметическом редизайне.
+IMPORTANT: classes like "ProductSupportDriverBIOS__title__3yZVA" contain
+a CSS-module hash that may change on the next ASUS site deploy. So here
+we search by a regex matching the stable part of the class name (up to
+the second "__"), not the class in full — that makes the parser less
+likely to break on a cosmetic redesign.
 """
 
 import re
@@ -47,14 +47,14 @@ class AsusBiosProvider(DriverProvider):
         return False
 
     def get_latest(self, device: dict = None) -> dict | None:
-        # URL нечувствителен к регистру, но пробелы нужно закодировать явно
+        # the URL is case-insensitive, but spaces need to be encoded explicitly
         url = SUPPORT_PAGE_URL.format(model=quote(self.model.lower()))
         resp = requests.get(url, headers=HEADERS, timeout=20)
         resp.raise_for_status()
 
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        # находим заголовок секции "BIOS" (не "Driver", не "Utility")
+        # find the "BIOS" section heading (not "Driver", not "Utility")
         title_div = None
         for div in soup.find_all("div"):
             if _class_matches(div, "ProductSupportDriverBIOS__title") and div.get_text(strip=True) == "BIOS":
@@ -91,17 +91,18 @@ class AsusBiosProvider(DriverProvider):
                 size_text = div.get_text(strip=True)
             elif (
                 version_text is None
-                and div.find("div") is None  # только "листовой" div, без вложенных
+                and div.find("div") is None  # only a "leaf" div, no nested ones
                 and re.match(r"^Version\s+\S+", div.get_text(strip=True))
             ):
                 version_text = div.get_text(strip=True)
 
         if version_text is None:
-            # Резервный путь: на некоторых страницах (не у всех моделей
-            # одинаковая внутренняя структура) нужного DOM-блока может не
-            # быть — но версия обычно зашита прямо в имя файла установщика
-            # ("ASUS_FX506LH_310_BIOS_Update_3.exe" -> "310"), которое есть
-            # в сыром HTML независимо от способа рендеринга страницы.
+            # Fallback path: on some pages (not every model has the same
+            # internal structure) the expected DOM block might be
+            # missing — but the version is usually baked right into the
+            # installer's file name ("ASUS_FX506LH_310_BIOS_Update_3.exe"
+            # -> "310"), which is present in the raw HTML regardless of
+            # how the page was rendered.
             return self._extract_via_filename_pattern(resp.text)
 
         version = re.sub(r"^Version\s+", "", version_text)
@@ -123,9 +124,10 @@ class AsusBiosProvider(DriverProvider):
 
         version = match.group(2)
 
-        # ищем ссылку на скачивание рядом (Global-путь до .exe/.zip) —
-        # слэши в сыром HTML могут быть как обычными "/", так и
-        # JS-эскейпом "\u002F" (не раскодированным) — учитываем оба варианта
+        # look for a nearby download link (the Global path to
+        # .exe/.zip) — slashes in the raw HTML can appear either as
+        # regular "/" or as an unescaped JS escape "\u002F" — handle
+        # both cases
         url_match = re.search(
             r'"?Global"?\s*:\s*"((?:/|\\u002[Ff])pub(?:/|\\u002[Ff])[^"]+\.(?:exe|zip))"',
             raw_text,

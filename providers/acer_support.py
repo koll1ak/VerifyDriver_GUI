@@ -1,25 +1,26 @@
 """
-Провайдер BIOS/Audio-драйверов с сайта Acer.
+Provider for BIOS/Audio drivers from the Acer site.
 
     POST https://www.acer.com/us-en/DynamicContent/GetDriversAndManuals
     Body (JSON): {"ModelName": "<MODEL>", "Local": "en-us"}
 
-Структура разобрана на реальных данных (Acer Nitro AN515-55). Ответ —
-JSON, где нужное содержимое лежит ДВАЖДЫ закодированным: в
-hits[0]._source.global_download_details лежит СТРОКА, которую нужно
-ещё раз распарсить как JSON — внутри неё уже категории driver/bios/
-userguide/application со списками файлов.
+Structure worked out from real data (Acer Nitro AN515-55). The response
+is JSON where the content we need is DOUBLE-encoded: hits[0]._source.
+global_download_details is a STRING that needs to be parsed as JSON
+again — inside it there are already driver/bios/userguide/application
+categories with file lists.
 
-BIOS: секция "bios" -> "files", фильтруем по category == "BIOS" (не
-"Firmware" — это отдельно VBIOS видеокарты, не системный BIOS), версии
-без разделения по ОС.
+BIOS: the "bios" section -> "files", filtered by category == "BIOS" (not
+"Firmware" — that's the graphics card's VBIOS, a separate thing, not the
+system BIOS), versions aren't split by OS.
 
-Audio: секция "driver" -> "files", фильтруем по category == "Audio" И
-по полю "oss" (значения вида "11M1"/"10M1" — Windows 11/10) — важно не
-перепутать: без этого фильтра можно получить версию под чужую ОС.
+Audio: the "driver" section -> "files", filtered by category == "Audio"
+AND by the "oss" field (values like "11M1"/"10M1" — Windows 11/10) — it's
+important not to mix this up: without this filter you can end up with a
+version meant for a different OS.
 
-<MODEL> — Win32_ComputerSystem.Model без префикса линейки продукта
-(например "Nitro AN515-55" -> "AN515-55").
+<MODEL> — Win32_ComputerSystem.Model without the product-line prefix
+(e.g. "Nitro AN515-55" -> "AN515-55").
 """
 
 import json
@@ -46,21 +47,21 @@ def _date_sort_key(date_str: str):
 
 def detect_acer_os_code() -> str:
     """
-    "11M1"/"10M1" — коды ОС, которые использует Acer в поле "oss".
-    Определяется так же, как в providers/nvidia.py (через билд системы).
+    "11M1"/"10M1" — the OS codes Acer uses in the "oss" field.
+    Determined the same way as in providers/nvidia.py (via the system's build number).
     """
     try:
         build = sys.getwindowsversion().build
     except AttributeError:
-        return "10M1"  # не Windows — дефолт
+        return "10M1"  # not Windows — default
     return "11M1" if build >= 22000 else "10M1"
 
 
 class AcerSupportProvider(DriverProvider):
     """
-    category: "BIOS" или "Audio".
-    os_code: нужен только для category="Audio" (у BIOS разделения по ОС нет);
-             если не передан — определяется автоматически по текущей системе.
+    category: "BIOS" or "Audio".
+    os_code: only needed for category="Audio" (BIOS has no OS split);
+             if not passed, auto-detected from the current system.
     """
 
     def __init__(
@@ -80,9 +81,9 @@ class AcerSupportProvider(DriverProvider):
         self.name = name
 
     def _build_page_url(self) -> str:
-        # полный URL требует ещё номер детали и серийник (иначе страница не
-        # существует) — если их не передали, отдаём укороченный вариант
-        # как максимально близкое приближение
+        # the full URL also needs a part number and serial number
+        # (otherwise the page doesn't exist) — if they weren't passed,
+        # we return a shortened version as the closest approximation
         if self.part_number and self.serial:
             return (
                 f"https://www.acer.com/us-en/support/product-support/"
@@ -94,11 +95,12 @@ class AcerSupportProvider(DriverProvider):
         return False
 
     def get_latest(self, device: dict = None) -> dict | None:
-        # так же, как у MSI: сначала посещаем саму страницу товара (чтобы
-        # получить cookies сессии), затем делаем API-запрос в её рамках.
-        # curl_cffi с impersonate="chrome" — сайт похож на MSI/Intel: держит
-        # соединение до таймаута вместо явного отказа для "небраузерных"
-        # клиентов (похоже на защиту вроде Akamai).
+        # same as with MSI: first visit the product page itself (to get
+        # the session cookies), then make the API request within that
+        # session. curl_cffi with impersonate="chrome" — the site is
+        # similar to MSI/Intel: it holds the connection until it times
+        # out instead of an explicit rejection for "non-browser" clients
+        # (looks like Akamai-style protection).
         session = requests.Session(impersonate="chrome")
         session.headers.update(HEADERS)
 
@@ -106,7 +108,7 @@ class AcerSupportProvider(DriverProvider):
         try:
             session.get(product_page_url, timeout=20)
         except Exception:
-            pass  # не критично, даже если страница не отдалась — пробуем API всё равно
+            pass  # not critical, even if the page fails to load — try the API anyway
 
         resp = session.post(
             API_URL,
@@ -140,11 +142,12 @@ class AcerSupportProvider(DriverProvider):
                 if f.get("category", "").upper() == self.category.upper() and f.get("oss") == self.os_code
             ]
             if not candidates:
-                # для этой модели в каталоге Acer может не быть отдельного
-                # пакета под твою версию Windows (например только "11M1",
-                # хотя у тебя Win10) — тогда берём самую свежую запись под
-                # ЛЮБУЮ ОС как справочную информацию, без уверенности, что
-                # она точно подходит именно твоей системе
+                # Acer's catalog for this model might not have a
+                # separate package for your specific Windows version
+                # (e.g. only "11M1", even though you have Win10) — in
+                # that case take the newest entry for ANY OS as
+                # informational data, without being sure it's actually
+                # right for your system
                 candidates = [
                     f for f in files if f.get("category", "").upper() == self.category.upper()
                 ]
@@ -159,7 +162,7 @@ class AcerSupportProvider(DriverProvider):
                         "description": latest.get("description"),
                         "url": download_url,
                         "page_url": self._build_page_url(),
-                        "os_mismatch": True,  # для этой ОС отдельной записи нет — сверку лучше не доверять
+                        "os_mismatch": True,  # no separate entry for this OS — the comparison isn't trustworthy
                     }
 
         if not candidates:
@@ -167,9 +170,9 @@ class AcerSupportProvider(DriverProvider):
 
         latest = max(candidates, key=lambda f: _date_sort_key(f.get("date", "")))
 
-        # "link" в ответе — относительный путь к файлу (без домена),
-        # достраиваем до полного рабочего URL; "page_url" — страница
-        # продукта целиком, полезна как запасной вариант для ручной проверки
+        # "link" in the response is a relative path to the file (no
+        # domain), we build it into a full working URL; "page_url" is
+        # the product page as a whole, useful as a fallback for a manual check
         file_link = latest.get("link")
         download_url = f"https://www.acer.com/{file_link}" if file_link else None
         page_url = self._build_page_url()

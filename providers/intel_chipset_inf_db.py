@@ -1,22 +1,23 @@
 """
-Провайдер для точного сравнения версии Intel Chipset — использует открытую
-community-базу (не официальный источник Intel, но общедоступный и
-регулярно обновляемый проект), которая ведёт версию INF-файла отдельно
-для КАЖДОЙ платформы (по Hardware ID), а не только версию пакета целиком.
+Provider for an accurate Intel Chipset version comparison — uses an open
+community database (not an official Intel source, but public and
+regularly updated) that tracks the INF file version separately for
+EACH platform (by Hardware ID), rather than just the package version as
+a whole.
 
     https://raw.githubusercontent.com/FirstEverTech/Universal-Intel-Chipset-Updater/main/data/intel-chipset-infs-latest.md
 
-Почему это решает проблему, с которой мы бились раньше: версия пакета
-Intel Chipset Device Software (например "10.1.20658.8883") никак не
-соотносится с версией конкретного установленного компонента (например
-"10.1.31.3" для CometLake PCH-H) — это разные системы счёта, и пакет
-может обновиться, даже не тронув версию для конкретно твоего поколения
-процессора. Эта база даёт версию именно компонента — ту же систему
-счёта, что видна в установленной системе — поэтому сравнение получается
-осмысленным.
+Why this solves the problem we struggled with earlier: the Intel
+Chipset Device Software package version (e.g. "10.1.20658.8883") has no
+relationship to the version of a specific installed component (e.g.
+"10.1.31.3" for CometLake PCH-H) — these are different numbering
+schemes, and the package can get updated without ever touching the
+version for your specific CPU generation. This database gives the
+component's own version — the same numbering scheme visible on the
+installed system — so the comparison ends up meaningful.
 
-Источник: https://github.com/FirstEverTech/Universal-Intel-Chipset-Updater
-Автор: Marcin Grygiel
+Source: https://github.com/FirstEverTech/Universal-Intel-Chipset-Updater
+Author: Marcin Grygiel
 """
 
 import re
@@ -32,7 +33,7 @@ _TABLE_ROW_RE = re.compile(r"^\|(.+)\|$")
 
 
 def _clean_cell(cell: str) -> str:
-    # убираем markdown-экранирование ("\_" -> "_") и лишние пробелы/звёздочки
+    # strip markdown escaping ("\_" -> "_") and stray whitespace/asterisks
     return cell.replace("\\_", "_").replace("\\*", "").strip()
 
 
@@ -48,9 +49,9 @@ def _parse_database(text: str) -> list[dict]:
             continue
         inf_cell, package_cell, version_cell, date_cell, hwids_cell = cells
 
-        if not set(package_cell) <= set("-: "):  # пропускаем строку-разделитель таблицы
+        if not set(package_cell) <= set("-: "):  # skip the table's separator row
             if ".inf" not in inf_cell.lower():
-                continue  # не строка с данными (например заголовок)
+                continue  # not a data row (e.g. a header)
             hwids = [
                 _clean_cell(h).upper()
                 for h in hwids_cell.split(",")
@@ -68,9 +69,9 @@ def _parse_database(text: str) -> list[dict]:
 
 class IntelChipsetInfDbProvider(DriverProvider):
     """
-    hwid: конкретный Hardware ID устройства (DEV_XXXX без префикса) —
-    берём из просканированного устройства чипсета, ищем в базе платформу,
-    к которой относится именно этот HWID.
+    hwid: the device's specific Hardware ID (DEV_XXXX without the
+    prefix) — taken from the scanned chipset device, we look up which
+    platform in the database this specific HWID belongs to.
     """
 
     name = "intel_chipset_inf_db"

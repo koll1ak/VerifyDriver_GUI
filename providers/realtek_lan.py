@@ -1,12 +1,12 @@
 """
-Провайдер Realtek LAN — тонкая обёртка над RealtekCategoryProvider.
+Realtek LAN provider — a thin wrapper over RealtekCategoryProvider.
 
-cate_id=584 — общая категория PCIe FE/GbE/2.5G/5G/10G, покрывает весь
-модельный ряд чипов RTL8111/8125/8126/8127 одним установщиком (инсталлятор
-сам определяет конкретный чип). В категории одновременно лежат разные
-варианты драйвера (NDIS/NetAdapterCx, с поддержкой энергосбережения и без) —
-выбираем по подстроке в Description, а не по индексу (порядок может
-смениться при обновлении).
+cate_id=584 — the general PCIe FE/GbE/2.5G/5G/10G category, covers the
+whole RTL8111/8125/8126/8127 chip lineup with a single installer (the
+installer itself detects the specific chip). The category contains
+several driver variants at once (NDIS/NetAdapterCx, with and without
+power-saving support) — we select by a substring in Description rather
+than by index (the order can change on an update).
 """
 
 from providers.realtek_base import RealtekCategoryProvider
@@ -17,18 +17,21 @@ DEFAULT_MATCH_SUBSTRINGS = ("NetAdapterCx", "Not Support Power Saving")
 
 def realtek_versions_match(current: str, latest: str) -> bool:
     """
-    Сайт даёт версию вида "11.030.20", Windows — вида "1126.30.20.508".
-    Средние два сегмента версии Windows соответствуют последним двум
-    сегментам версии с сайта (без ведущих нулей) — например "30.20" в обоих
-    случаях. Первый сегмент Windows-версии — это склейка кода продукта и
-    года релиза, последний — внутренний build, оба не участвуют в сравнении.
+    The site gives a version like "11.030.20", Windows gives one like
+    "1126.30.20.508". The middle two segments of the Windows version
+    correspond to the last two segments of the site's version (with
+    leading zeros stripped) — e.g. "30.20" in both cases. The first
+    segment of the Windows version is a combination of a product code
+    and release year, the last one is an internal build number, neither
+    is used in the comparison.
 
-    Правило подтверждено эмпирически ТОЛЬКО для 2.5G/5G-чипов (например
-    RTL8126, где реальная версия была "1126.30.20.508"). Для старых
-    1GbE-чипов (RTL8111 и т.п.) формат версии Windows выглядит иначе —
-    например "1168.8.515.2022", где последний сегмент похож на год, а не
-    build — правило тут неприменимо. is_recognized_format() ниже помогает
-    отличить один случай от другого перед тем, как доверять сравнению.
+    This rule has ONLY been confirmed empirically for 2.5G/5G chips
+    (e.g. the RTL8126, where the real version was "1126.30.20.508"). For
+    older 1GbE chips (RTL8111, etc.) the Windows version format looks
+    different — e.g. "1168.8.515.2022", where the last segment looks like
+    a year, not a build — this rule doesn't apply there.
+    is_recognized_format() below helps tell the two cases apart before
+    trusting the comparison.
     """
     if not current or not latest:
         return False
@@ -53,11 +56,11 @@ def realtek_versions_match(current: str, latest: str) -> bool:
 
 def is_recognized_realtek_version_format(current: str) -> bool:
     """
-    True, если версия Windows похожа на подтверждённый формат для 2.5G/5G
-    чипов ("PPYY.mid.mid.build", например "1126.30.20.508" — первый
-    сегмент 4 цифры, где последние 2 правдоподобны как год 20XX).
-    Для старых 1GbE-чипов формат другой (например "1168.8.515.2022") —
-    не подтверждён эмпирически, сравнивать с сайтом небезопасно.
+    True if the Windows version looks like the confirmed format for
+    2.5G/5G chips ("PPYY.mid.mid.build", e.g. "1126.30.20.508" — first
+    segment 4 digits, where the last 2 are plausible as a 20XX year).
+    Older 1GbE chips have a different format (e.g. "1168.8.515.2022") —
+    not empirically confirmed, comparing against the site isn't safe.
     """
     parts = current.split(".")
     if len(parts) != 4:
@@ -66,15 +69,15 @@ def is_recognized_realtek_version_format(current: str) -> bool:
     if len(first) != 4 or not first.isdigit():
         return False
     year_part = int(first[2:4])
-    return 20 <= year_part <= 39  # правдоподобный год релиза (2020-е-2030-е)
+    return 20 <= year_part <= 39  # a plausible release year (2020s-2030s)
 
 
 def realtek_ndis_versions_match(current: str, latest: str) -> bool:
     """
-    Для NDIS-варианта драйвера (не NetAdapterCx) версия Windows и версия
-    сайта совпадают напрямую — сайт даёт "10.80.20", Windows —
-    "10.80.20.407" (просто с дополнительным build-сегментом на конце).
-    Подтверждено на реальном устройстве.
+    For the NDIS driver variant (not NetAdapterCx), the Windows version
+    and the site's version match directly — the site gives "10.80.20",
+    Windows gives "10.80.20.407" (just with an extra build segment
+    appended). Confirmed on a real device.
     """
     if not current or not latest:
         return False
@@ -91,18 +94,18 @@ def realtek_ndis_versions_match(current: str, latest: str) -> bool:
 
 def detect_realtek_lan_variant(current: str) -> str:
     """
-    "ndis" / "netadaptercx" / "unknown" — какой драйверный фреймворк
-    установлен, по формату версии. NDIS даёт короткий первый сегмент
-    ("10"/"11"), NetAdapterCx — склейку кода продукта с годом ("1126" и
-    т.п., см. is_recognized_realtek_version_format). Оба подтверждены на
-    реальных устройствах — на разных машинах может быть установлен любой
-    из двух, страница Realtek публикует оба варианта отдельно.
+    "ndis" / "netadaptercx" / "unknown" — which driver framework is
+    installed, based on the version format. NDIS gives a short first
+    segment ("10"/"11"), NetAdapterCx gives a product-code-plus-year
+    combo ("1126" etc., see is_recognized_realtek_version_format). Both
+    are confirmed on real devices — either one may be installed on a
+    given machine, Realtek's page publishes both variants separately.
 
-    ВАЖНО: у некоторых легаси-чипов последний сегмент версии — тоже год
-    (например "10.31.828.2018"), и первый сегмент при этом может случайно
-    совпасть с "10"/"11" — это НЕ настоящий NDIS-формат (подтверждено на
-    практике: такая версия не совпадает ни с одной записью на сайте).
-    Проверяем это ДО определения NDIS, чтобы не сравнивать по ошибке.
+    IMPORTANT: on some legacy chips the last version segment is also a
+    year (e.g. "10.31.828.2018"), and the first segment can coincidentally
+    match "10"/"11" — this is NOT the real NDIS format (confirmed in
+    practice: such a version doesn't match any entry on the site). We
+    check for this BEFORE detecting NDIS, to avoid comparing incorrectly.
     """
     if not current:
         return "unknown"
@@ -112,7 +115,7 @@ def detect_realtek_lan_variant(current: str) -> str:
 
     last = parts[-1]
     if len(last) == 4 and last.isdigit() and 2000 <= int(last) <= 2039:
-        return "unknown"  # похоже на легаси-формат с годом на конце
+        return "unknown"  # looks like the legacy format with a year at the end
 
     if parts[0] in ("10", "11"):
         return "ndis"
@@ -128,9 +131,9 @@ class RealtekLanProvider(RealtekCategoryProvider):
         super().__init__(cate_id=cate_id, match_substrings=match_substrings)
 
     def matches(self, device: dict) -> bool:
-        # Realtek VEN_10EC используется и для аудио, и для LAN — отсекаем
-        # аудио-устройства по наличию "FAMILY CONTROLLER" в имени (так
-        # называются в Windows именно сетевые чипы этой линейки)
+        # Realtek's VEN_10EC is used for both audio and LAN — we exclude
+        # audio devices by checking for "FAMILY CONTROLLER" in the name
+        # (that's what Windows calls this lineup's network chips)
         return (
             device.get("VendorID") == "10EC"
             and "FAMILY CONTROLLER" in device.get("DeviceName", "").upper()

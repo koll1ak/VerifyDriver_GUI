@@ -1,17 +1,19 @@
 """
-Провайдер для драйверов с сайта MSI (не BIOS) — использует тот же API,
-что и providers/msi_bios.py, но с параметром type=driver вместо type=bios.
+Provider for (non-BIOS) drivers from the MSI site — uses the same API as
+providers/msi_bios.py, but with the type=driver parameter instead of
+type=bios.
 
     GET https://www.msi.com/api/v1/product/support/panel?product=<MODEL>&type=driver
 
-Актуально в первую очередь для аудио-драйвера: у Realtek-кодеков на платах
-MSI часто стоит кастомизированный под MSI пакет (INF вида "..._msi.inf"),
-который распространяется именно через сайт MSI, а не через общую страницу
-Realtek — с другой (обычно более свежей/точной) версией под конкретную плату.
+Mainly relevant for the audio driver: Realtek codecs on MSI boards
+often ship a package customized for MSI (an INF like "..._msi.inf"),
+distributed via MSI's own site rather than Realtek's generic page — with
+a different (usually newer/more accurate) version for that specific board.
 
-Название категории в JSON-ответе заранее неизвестно (в отличие от BIOS,
-где ключ "AMI BIOS" был явно виден) — ищем по подстроке "AUDIO" среди
-всех категорий в result.downloads, а не по жёстко зашитому названию.
+The category name in the JSON response isn't known ahead of time
+(unlike BIOS, where the "AMI BIOS" key was visible up front) — we search
+for a substring like "AUDIO" among all the categories in
+result.downloads, rather than a hardcoded name.
 """
 
 import requests
@@ -31,8 +33,8 @@ HEADERS = {
 
 class MsiDriverProvider(DriverProvider):
     """
-    category_keyword: подстрока для поиска нужной категории в downloads
-    (например "AUDIO" для аудио-драйвера).
+    category_keyword: a substring used to find the right category in
+    downloads (e.g. "AUDIO" for the audio driver).
     """
 
     def __init__(self, product_slug: str, category_keyword: str, name: str = "msi_driver"):
@@ -44,8 +46,9 @@ class MsiDriverProvider(DriverProvider):
         return False
 
     def get_latest(self, device: dict = None) -> dict | None:
-        # так же, как в msi_bios.py — сначала страница поддержки (для cookies
-        # от Akamai), потом сам API-запрос с Referer в рамках той же сессии
+        # same as in msi_bios.py — first the support page (for Akamai
+        # cookies), then the actual API request with a Referer, within
+        # the same session
         support_url = f"https://www.msi.com/Motherboard/{self.product_slug}/support"
 
         from curl_cffi import requests as curl_requests
@@ -78,7 +81,7 @@ class MsiDriverProvider(DriverProvider):
         if not items:
             return None
 
-        latest = items[0]  # список отсортирован: новые сверху
+        latest = items[0]  # the list is sorted: newest first
         return {
             "version": latest.get("download_version"),
             "date": latest.get("download_release"),
@@ -91,11 +94,12 @@ class MsiDriverProvider(DriverProvider):
 
 def get_installed_inf_version(inf_name_hint: str) -> str | None:
     """
-    Версия установленного стороннего драйвера из Driver Store (pnputil),
-    например "rtdusbad_msi.inf" -> "6.4.0.2443". Это НЕ версия драйвера,
-    привязанного к конкретному устройству (Get-CimInstance...DriverVersion
-    может показывать другое — версию активного класс-драйвера Windows,
-    а не установленного в системе стороннего пакета).
+    The version of the installed third-party driver from the Driver
+    Store (pnputil), e.g. "rtdusbad_msi.inf" -> "6.4.0.2443". This is
+    NOT the driver version tied to a specific device
+    (Get-CimInstance...DriverVersion may show something different — the
+    version of Windows's active class driver, not the third-party
+    package installed on the system).
     """
     import subprocess
 

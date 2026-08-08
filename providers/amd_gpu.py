@@ -1,24 +1,24 @@
 """
-Провайдер AMD Radeon GPU (AMD Software: Adrenalin Edition).
+AMD Radeon GPU provider (AMD Software: Adrenalin Edition).
 
-Переиспользует AmdChipsetProvider — структура страниц amd.com одна и та же
-для чипсетов и видеокарт, отличается только URL и формат версии
-("Adrenalin 26.5.2 (WHQL Recommended)" вместо чистого номера).
+Reuses AmdChipsetProvider — the page structure on amd.com is the same
+for chipsets and graphics cards, only the URL and the version format
+differ ("Adrenalin 26.5.2 (WHQL Recommended)" instead of a plain number).
 
-ВАЖНО: маркетинговая версия ("26.7.1") — не то же самое, что версия,
-которую видит Windows ("32.0.21043.1005"), это разные системы счёта, как
-и у NVIDIA. Но, в отличие от NVIDIA, у AMD нет API с прямым
-сопоставлением — зато на странице Release Notes каждого релиза
-публикуется точное значение "Windows Driver Store Version" в ТОМ ЖЕ
-формате, что видит Windows (подтверждено на реальных release notes AMD).
-У AMD ДВА параллельных трека нумерации одновременно (для разных
-поколений GPU) — выбираем нужный, сравнивая первые 2 цифры третьего
-сегмента установленной версии (например "21" в "32.0.21043.1005").
+IMPORTANT: the marketing version ("26.7.1") is not the same as the
+version Windows sees ("32.0.21043.1005") — these are different numbering
+schemes, same as with NVIDIA. But unlike NVIDIA, AMD doesn't have an API
+with a direct mapping — however, every release's Release Notes page
+publishes the exact "Windows Driver Store Version" value in the SAME
+format Windows sees (confirmed on real AMD release notes). AMD runs TWO
+parallel numbering tracks at once (for different GPU generations) — we
+pick the right one by comparing the first 2 digits of the third segment
+of the installed version (e.g. "21" in "32.0.21043.1005").
 
-ВАЖНО: page_url нужно указать вручную под конкретную модель видеокарты —
-взять из адресной строки страницы поддержки этой модели на amd.com
-(Support -> Drivers & Support -> найти свою модель).
-Пример для Radeon RX 580:
+IMPORTANT: page_url needs to be set manually for the specific graphics
+card model — take it from the address bar of that model's support page
+on amd.com (Support -> Drivers & Support -> find your model).
+Example for the Radeon RX 580:
 "https://www.amd.com/en/support/downloads/drivers.html/graphics/radeon-600-500-400/radeon-rx-500-series/radeon-rx-580.html"
 """
 
@@ -37,7 +37,7 @@ _STORE_VERSION_RE = re.compile(r"Windows Driver Store Version\s+([\d.]+)")
 
 
 def _segment3_prefix(version: str) -> str | None:
-    """Первые 2 цифры третьего сегмента — определяет "трек" нумерации AMD."""
+    """The first 2 digits of the third segment — determines AMD's numbering "track"."""
     parts = version.split(".")
     if len(parts) < 3 or len(parts[2]) < 2:
         return None
@@ -56,10 +56,10 @@ class AmdGpuProvider(AmdChipsetProvider):
         )
 
     def matches(self, device: dict) -> bool:
-        # у видеокарт AMD Vendor ID "1002" (унаследовано от ATI), а не
-        # "1022" (родительский AmdChipsetProvider.matches() использует
-        # именно его, он верен для чипсета/CPU-устройств, но не для GPU) —
-        # подтверждено на реальном устройстве
+        # AMD graphics cards have Vendor ID "1002" (inherited from ATI),
+        # not "1022" (the parent AmdChipsetProvider.matches() uses that
+        # one, which is correct for chipset/CPU devices, but not for
+        # GPUs) — confirmed on a real device
         return (
             device.get("VendorID") == "1002"
             and any(kw in device.get("DeviceName", "").upper() for kw in self.vendor_match_keywords)
@@ -70,18 +70,19 @@ class AmdGpuProvider(AmdChipsetProvider):
         if latest is None:
             return None
 
-        # явный флаг вместо неявного вывода по наличию/отсутствию ключа —
-        # main.py читает именно его, чтобы решить, доверять ли сравнению
+        # an explicit flag instead of implicitly inferring from the
+        # presence/absence of a key — main.py reads exactly this to
+        # decide whether to trust the comparison
         latest["comparable_with_windows_version"] = False
 
         current_version = device.get("DriverVersion") if device else None
         if not current_version:
-            return latest  # нечего сопоставлять — отдаём маркетинговую версию как есть
+            return latest  # nothing to compare against — return the marketing version as-is
 
         try:
             store_version = self._find_matching_store_version(current_version)
         except Exception:
-            return latest  # Release Notes недоступны/структура изменилась — не рискуем, отдаём как было
+            return latest  # Release Notes unavailable/structure changed — don't risk it, return as-is
 
         if store_version:
             latest["marketing_version"] = latest.get("raw_revision")

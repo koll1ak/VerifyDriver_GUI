@@ -1,10 +1,10 @@
 """
-Провайдер для драйверов с сайта Gigabyte (не BIOS) — та же страница и та
-же табличная структура, что и у BIOS (providers/gigabyte_bios.py), но
-данные ищутся под заголовком "Driver" вместо "BIOS", и внутри этой секции
-все типы драйверов (Audio/Chipset/APU/RAID и т.д.) свалены в одну таблицу —
-нужную строку находим по подстроке в Description, а не по отдельному
-заголовку раздела.
+Provider for (non-BIOS) drivers from the Gigabyte site — the same page
+and the same table structure as BIOS (providers/gigabyte_bios.py), but
+data is looked up under a "Driver" heading instead of "BIOS", and inside
+that section every driver type (Audio/Chipset/APU/RAID etc.) is dumped
+into a single table — we find the right row by a substring in
+Description, not by a separate section heading.
 
     https://www.gigabyte.com/Motherboard/<MODEL-SLUG>/support
 """
@@ -23,8 +23,8 @@ HEADERS = DEFAULT_HEADERS
 
 class GigabyteDriverProvider(DriverProvider):
     """
-    match_substrings: подстроки, которые должны встретиться в Description
-    строки таблицы (например ("Realtek", "Audio") для аудио-драйвера).
+    match_substrings: substrings that must appear in the Description of
+    a table row (e.g. ("Realtek", "Audio") for the audio driver).
     """
 
     def __init__(self, product_slug: str, match_substrings: tuple[str, ...], name: str = "gigabyte_driver"):
@@ -62,8 +62,8 @@ class GigabyteDriverProvider(DriverProvider):
             if len(cells) < 5:
                 continue
 
-            # у таблицы "Driver" (в отличие от "BIOS") есть колонка OS между
-            # Version и Size: Description | Version | OS | Size | Date | Download
+            # the "Driver" table (unlike "BIOS") has an OS column between
+            # Version and Size: Description | Version | OS | Size | Date | Download
             description_cell, version_cell, size_cell, date_cell = cells[0], cells[1], cells[3], cells[4]
             description = re.sub(r"\s+", " ", description_cell.get_text(" ", strip=True))
 

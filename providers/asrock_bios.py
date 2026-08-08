@@ -1,16 +1,17 @@
 """
-Провайдер BIOS для плат ASRock.
+BIOS provider for ASRock boards.
 
-Страница полностью server-rendered, обычная HTML-таблица, без JS/API:
+The page is fully server-rendered, a plain HTML table, no JS/API:
 
     https://www.asrock.com/mb/<family>/<MODEL NAME>/bios.html
 
-<family> — "amd" или "intel" (сегмент пути на сайте ASRock, зависит от
-платформы чипсета).
-<MODEL NAME> — имя платы как есть, с пробелами (URL-кодируются автоматически
-библиотекой requests) — в отличие от MSI/Gigabyte, дефисы тут не нужны.
+<family> — "amd" or "intel" (a URL path segment on ASRock's site,
+depends on the chipset platform).
+<MODEL NAME> — the board name as-is, with spaces (URL-encoded
+automatically by the requests library) — unlike MSI/Gigabyte, hyphens
+aren't needed here.
 
-Список версий отсортирован от новой к старой — берём первую строку.
+The list of versions is sorted newest to oldest — we take the first row.
 """
 
 import re
@@ -50,7 +51,7 @@ class AsrockBiosProvider(DriverProvider):
 
         body = table.find("tbody") or table
         rows = body.find_all("tr")
-        # первая строка может быть заголовком — пропускаем строки без <td>
+        # the first row might be a header — skip rows with no <td>
         data_rows = [r for r in rows if r.find("td")]
         if not data_rows:
             return None
@@ -62,7 +63,8 @@ class AsrockBiosProvider(DriverProvider):
 
         version_cell, date_cell, size_cell = cells[0], cells[1], cells[2]
 
-        # ссылка на Global-загрузку (не China/FTP) — ищем первую <a href> на download.asrock.com
+        # link to the Global download (not China/FTP) — look for the
+        # first <a href> pointing at download.asrock.com
         download_link = None
         for a in first_row.find_all("a", href=True):
             if "download.asrock.com" in a["href"]:

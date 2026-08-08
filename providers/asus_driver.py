@@ -1,18 +1,18 @@
 """
-Провайдер для драйверов с сайта ASUS (не BIOS).
+Provider for (non-BIOS) drivers from the ASUS site.
 
     https://www.asus.com/us/supportonly/<MODEL>/helpdesk_driver/
 
-ВАЖНО: в отличие от providers/asus_bios.py (структуру которого разобрали
-по реальному HTML со страницы), точные CSS-классы для вкладки "Driver"
-не проверялись — судя по коду сайта, это отдельный компонент
-(DriverPanel.js, не BIOSPanel.js), поэтому имена классов могут отличаться
-от "ProductSupportDriverBIOS__...". Чтобы не зависеть от угаданных
-классов, здесь используется текстовый эвристический разбор: ищем
-элемент, в тексте которого одновременно есть "Realtek"+"Audio" и рядом
-паттерн "Version X.X.X" — независимо от конкретной разметки/классов.
-Менее точно, чем classname-based парсер, но не сломается при
-косметическом редизайне сайта.
+IMPORTANT: unlike providers/asus_bios.py (whose structure was worked
+out from real HTML on the page), the exact CSS classes for the "Driver"
+tab weren't verified — judging by the site's code, it's a separate
+component (DriverPanel.js, not BIOSPanel.js), so the class names may
+differ from "ProductSupportDriverBIOS__...". To avoid depending on
+guessed classes, this uses a text-based heuristic parse instead: look
+for an element whose text contains both "Realtek"+"Audio" together with
+a nearby "Version X.X.X" pattern — regardless of the specific
+markup/classes. Less precise than a classname-based parser, but won't
+break on a cosmetic site redesign.
 """
 
 import re
@@ -33,7 +33,7 @@ _SIZE_RE = re.compile(r"\d+(\.\d+)?\s*(MB|KB|GB)", re.IGNORECASE)
 
 
 class AsusDriverProvider(DriverProvider):
-    """match_substrings: подстроки, обязательные в тексте карточки (например ("Realtek", "Audio"))."""
+    """match_substrings: substrings required in the card's text (e.g. ("Realtek", "Audio"))."""
 
     def __init__(self, model: str, match_substrings: tuple[str, ...], name: str = "asus_driver"):
         self.model = model
@@ -50,17 +50,18 @@ class AsusDriverProvider(DriverProvider):
 
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        # Ищем от НАЗВАНИЯ драйвера (уникальная фраза вроде "Realtek Audio
-        # Driver"), а не от версии — так надёжнее: климб вверх от версии
-        # рискует "перепрыгнуть" границу карточки и попасть в общий
-        # контейнер, где искомые слова тоже встретятся, но уже от другой
-        # записи на странице. Ищем "листовые" элементы (без вложенных
-        # div/p/span), чей ТЕКСТ САМ ПО СЕБЕ содержит обе подстроки —
-        # это и есть заголовок нужной карточки.
+        # Search starting from the driver's TITLE (a unique phrase like
+        # "Realtek Audio Driver"), not from the version — this is more
+        # reliable: climbing up from the version risks "jumping over"
+        # the card boundary and landing in a shared container where the
+        # words we're looking for also appear, but from a different
+        # entry on the page. We look for "leaf" elements (no nested
+        # div/p/span) whose OWN TEXT contains both substrings — that's
+        # the title of the right card.
         title_tag = None
         for tag in soup.find_all(["div", "p", "span"]):
             if tag.find(["div", "p", "span"]):
-                continue  # не листовой элемент — пропускаем
+                continue  # not a leaf element — skip
             text = tag.get_text(strip=True)
             if all(s.upper() in text.upper() for s in self.match_substrings):
                 title_tag = tag
@@ -69,8 +70,8 @@ class AsusDriverProvider(DriverProvider):
         if title_tag is None:
             return None
 
-        # поднимаемся на несколько уровней вверх до "карточки" — целой
-        # записи об этом драйвере, где рядом должны быть версия/дата/размер
+        # climb up a few levels to the "card" — the whole entry for this
+        # driver, where the version/date/size should be nearby
         card = title_tag
         for _ in range(4):
             if card is None:

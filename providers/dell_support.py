@@ -1,32 +1,34 @@
 """
-Провайдер для BIOS/Audio-драйверов с сайта Dell по Service Tag.
+Provider for BIOS/Audio drivers from the Dell site by Service Tag.
 
     https://www.dell.com/support/home/en-us/product-support/servicetag/<TAG>/drivers
 
-НЕ ПРОВЕРЕНО НА РЕАЛЬНОМ УСТРОЙСТВЕ (в отличие от MSI/AMD/Gigabyte/ASRock/
-ASUS, где структуру разбирали по реальным скриншотам с конкретной машины) —
-у автора нет ни одного Dell-ноутбука под рукой. Написано по документированному
-паттерну (Service Tag → страница драйверов, категории включая "BIOS" и
-"Audio", версия+дата+размер видны в интерфейсе) и по аналогии с уже
-проверенными провайдерами.
+NOT VERIFIED ON A REAL DEVICE (unlike MSI/AMD/Gigabyte/ASRock/ASUS,
+whose structure was worked out from real screenshots off an actual
+machine) — the author doesn't have a single Dell laptop on hand. Written
+based on the documented pattern (Service Tag → drivers page, categories
+including "BIOS" and "Audio", version+date+size visible in the UI) and
+by analogy with already-verified providers.
 
-Риски, которые стоит проверить при первом реальном запуске:
-1. Страница может оказаться тяжёлым JS-приложением (Dell.com в целом
-   использует сложные Angular/React-компоненты) — тогда нужного контента
-   в простом requests.get() просто не будет, придётся искать реальный
-   API-эндпоинт через DevTools, как делали для MSI/AMD chipset.
-2. Возможна защита от ботов (Akamai или похожая) — тогда потребуется
-   curl_cffi с impersonate="chrome", как в providers/msi_bios.py.
-3. Категории на сайте называются "BIOS" и "Audio" по документации Dell,
-   но точный текст категории на странице может отличаться регистром/
-   формулировкой — сравнение сделано без учёта регистра, чтобы это
-   пережить, но сам факт совпадения не гарантирован.
+Risks worth checking on the first real run:
+1. The page might turn out to be a heavy JS app (Dell.com generally
+   uses complex Angular/React components) — in which case the needed
+   content just won't be in a plain requests.get() response, and a real
+   API endpoint would need to be found via DevTools, the way it was done
+   for MSI/AMD chipset.
+2. There might be bot protection (Akamai or similar) — in which case
+   curl_cffi with impersonate="chrome" would be needed, as in
+   providers/msi_bios.py.
+3. The categories on the site are called "BIOS" and "Audio" per Dell's
+   documentation, but the exact category text on the page may differ in
+   case/wording — the comparison is case-insensitive to survive that,
+   but a match isn't guaranteed.
 
-Парсинг — по текстовым паттернам (год-месяц-день для даты, "MB"/"KB" для
-размера, версия — первая последовательность цифр с точками рядом с меткой
-категории), а не по конкретным CSS-классам/индексам столбцов — так же, как
-в providers/asrock_driver.py и providers/asus_driver.py, по той же причине
-(меньше риск сломаться на неизвестной вёрстке).
+Parsing is done via text patterns (year-month-day for the date, "MB"/"KB"
+for size, version as the first dotted number sequence near the category
+label) rather than specific CSS classes/column indices — same as in
+providers/asrock_driver.py and providers/asus_driver.py, for the same
+reason (less risk of breaking on unknown markup).
 """
 
 import re
@@ -46,8 +48,8 @@ _SIZE_RE = re.compile(r"\d+(\.\d+)?\s*(MB|KB|GB)", re.IGNORECASE)
 
 class DellSupportProvider(DriverProvider):
     """
-    category: "BIOS" или "Audio" (ищется как отдельное слово в тексте
-    страницы, без учёта регистра).
+    category: "BIOS" or "Audio" (looked up as a standalone word in the
+    page text, case-insensitive).
     """
 
     def __init__(self, service_tag: str, category: str, name: str = "dell_support"):
@@ -65,18 +67,18 @@ class DellSupportProvider(DriverProvider):
 
         text = resp.text
 
-        # ищем позицию упоминания нужной категории на странице, затем
-        # версию/дату/размер в окне текста сразу после неё — так же, как
-        # это выглядит на странице для пользователя (категория, затем
-        # детали конкретного пакета)
+        # find where the desired category is mentioned on the page, then
+        # look for version/date/size in a window of text right after it
+        # — the same way it appears to the person on the page (category,
+        # then the specific package's details)
         category_match = re.search(re.escape(self.category), text, re.IGNORECASE)
         if category_match is None:
             return None
 
         window = text[category_match.end():category_match.end() + 2000]
 
-        # убираем HTML-теги из окна, чтобы регексы искали по видимому тексту,
-        # а не по разметке
+        # strip HTML tags from the window so the regexes search visible
+        # text, not markup
         window_text = re.sub(r"<[^>]+>", " ", window)
         window_text = re.sub(r"\s+", " ", window_text)
 
@@ -91,6 +93,6 @@ class DellSupportProvider(DriverProvider):
             "version": version_match.group(0),
             "date": date_match.group(0) if date_match else None,
             "size": size_match.group(0) if size_match else None,
-            "url": url,  # прямой ссылки на файл эвристика не даёт — ведём на страницу
+            "url": url,  # the heuristic doesn't give a direct file link — point to the page
             "page_url": url,
         }

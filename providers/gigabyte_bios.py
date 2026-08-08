@@ -1,17 +1,17 @@
 """
-Провайдер BIOS для плат Gigabyte / AORUS (это один и тот же сайт —
-AORUS — суббренд Gigabyte, отдельного домена/API нет).
+BIOS provider for Gigabyte / AORUS boards (it's the same site — AORUS is
+a Gigabyte sub-brand, there's no separate domain/API).
 
-Страница поддержки полностью server-rendered, обычная HTML-таблица
-под заголовком "BIOS", без JS/API и без защиты от ботов:
+The support page is fully server-rendered, a plain HTML table under a
+"BIOS" heading, no JS/API and no bot protection:
 
     https://www.gigabyte.com/Motherboard/<MODEL-SLUG>/support
 
-<MODEL-SLUG> — имя платы с пробелами, заменёнными на дефисы, например
-"X870-AORUS-STEALTH" для "X870 AORUS STEALTH".
+<MODEL-SLUG> is the board name with spaces replaced by hyphens, e.g.
+"X870-AORUS-STEALTH" for "X870 AORUS STEALTH".
 
-Список версий в таблице отсортирован от новой к старой — берём первую
-строку.
+The list of versions in the table is sorted newest to oldest — we take
+the first row.
 """
 
 import re
@@ -40,7 +40,7 @@ class GigabyteBiosProvider(DriverProvider):
         self.product_slug = product_slug
 
     def matches(self, device: dict) -> bool:
-        # не участвует в обходе PnP-устройств — BIOS не виден как обычное устройство
+        # doesn't participate in the PnP device scan — BIOS isn't visible as a regular device
         return False
 
     def get_latest(self, device: dict = None) -> dict | None:

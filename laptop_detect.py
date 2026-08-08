@@ -1,26 +1,26 @@
 """
-Определение ноутбука: тип корпуса, вендор/модель, Service Tag (для Dell),
-серийник (для Lenovo — используется как productId в API pcsupport.lenovo.com).
+Laptop detection: chassis type, vendor/model, Service Tag (for Dell),
+serial number (for Lenovo — used as productId in the pcsupport.lenovo.com API).
 
-Источники — WMI:
-- Win32_SystemEnclosure.ChassisTypes — коды 8-14, 30-32 соответствуют
-  портативным корпусам (ноутбук, планшет-трансформер и т.д.)
-- Win32_ComputerSystem.Manufacturer/Model — вендор/модель системы в целом
-  (не платы — на ноутбуках Win32_BaseBoard часто даёт мусор)
-- Win32_BIOS.SerialNumber — на технике Dell это и есть Service Tag,
-  уникальный 7-значный идентификатор конкретного устройства
+Sources — WMI:
+- Win32_SystemEnclosure.ChassisTypes — codes 8-14, 30-32 correspond to
+  portable chassis types (laptop, convertible tablet, etc.)
+- Win32_ComputerSystem.Manufacturer/Model — vendor/model of the system as
+  a whole (not the board — on laptops Win32_BaseBoard often returns garbage)
+- Win32_BIOS.SerialNumber — on Dell hardware this is the Service Tag,
+  a unique 7-character identifier for the specific device
 """
 
 import subprocess
 import json
 import re
 
-# коды корпусов, которые Windows/DMI считает портативными
+# chassis codes that Windows/DMI considers portable
 LAPTOP_CHASSIS_TYPES = {"8", "9", "10", "11", "12", "14", "30", "31", "32"}
 
 
 def is_laptop() -> bool | None:
-    """True/False, либо None если не удалось определить."""
+    """True/False, or None if it couldn't be determined."""
     ps_command = (
         "(Get-CimInstance Win32_SystemEnclosure).ChassisTypes | ConvertTo-Json"
     )
@@ -30,7 +30,7 @@ def is_laptop() -> bool | None:
             capture_output=True, text=True, encoding="utf-8", errors="replace",
         )
     except OSError:
-        return None  # powershell недоступен (не Windows, ограничения и т.п.)
+        return None  # powershell unavailable (not Windows, restrictions, etc.)
 
     if result.returncode != 0 or not result.stdout.strip():
         return None
@@ -99,9 +99,9 @@ def get_laptop_info() -> dict:
     }
 
 
-# известные линейки продуктов Acer — убираем префикс, чтобы получить
-# именно ту часть, которую сайт acer.com использует как ModelName
-# (например "Nitro AN515-55" -> "AN515-55")
+# known Acer product lines — stripped from the prefix to get the exact
+# part that acer.com uses as ModelName
+# (e.g. "Nitro AN515-55" -> "AN515-55")
 ACER_PRODUCT_LINES = (
     "Predator", "Nitro", "Aspire", "Swift", "TravelMate",
     "Extensa", "ConceptD", "Spin", "Enduro", "Iconia", "Chromebook",
@@ -112,16 +112,17 @@ _ACER_PREFIX_RE = re.compile(
 
 
 def extract_acer_model_name(model: str) -> str:
-    """"Nitro AN515-55" -> "AN515-55" (убираем префикс линейки продукта)."""
+    """"Nitro AN515-55" -> "AN515-55" (strips the product line prefix)."""
     return _ACER_PREFIX_RE.sub("", model).strip()
 
 
 def extract_acer_part_number(serial: str) -> str | None:
     """
-    Номер детали Acer выводится прямо из первых 10 символов серийника:
+    The Acer part number is derived directly from the first 10 characters
+    of the serial number:
     "NHQ7JEU00G0400B98F3400" -> "NH.Q7JEU.00G"
-    (сегменты 2+5+3 символа, разделённые точками) — подтверждено на
-    реальном устройстве (Acer Nitro AN515-55).
+    (2+5+3 character segments separated by dots) — confirmed on a real
+    device (Acer Nitro AN515-55).
     """
     if not serial or len(serial) < 10:
         return None
@@ -130,11 +131,11 @@ def extract_acer_part_number(serial: str) -> str | None:
 
 def extract_asus_laptop_model(model: str) -> str:
     """
-    Win32_ComputerSystem.Model на ноутбуках ASUS обычно дублирует код
-    модели через подчёркивание:
+    On ASUS laptops, Win32_ComputerSystem.Model usually duplicates the
+    model code with an underscore:
     "ASUS Vivobook S 16 S5606CA_S5606CA" -> "S5606CA"
-    (подтверждено на реальном устройстве) — берём последний сегмент
-    после "_"; если подчёркивания нет — используем строку как есть.
+    (confirmed on a real device) — take the last segment after "_";
+    if there's no underscore, use the string as-is.
     """
     if "_" in model:
         return model.rsplit("_", 1)[-1].strip()
@@ -143,7 +144,7 @@ def extract_asus_laptop_model(model: str) -> str:
 
 def detect_laptop() -> dict:
     """
-    Главная функция.
+    Main function.
     {
         "is_laptop": True/False/None,
         "manufacturer": str | None,

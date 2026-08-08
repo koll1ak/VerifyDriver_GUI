@@ -1,18 +1,17 @@
 """
-Провайдер для ноутбуков ASUS — использует официальный JSON API страницы
-поддержки (не текстовую эвристику, как providers/asus_driver.py, которая
-писалась под десктопные платы и не подходит для ноутбучных страниц —
-там список драйверов подгружается через этот отдельный эндпоинт).
+Provider for ASUS laptops — uses the support page's official JSON API
+(not a text heuristic like providers/asus_driver.py, which was written
+for desktop boards and doesn't fit laptop pages — there the driver list
+loads via this separate endpoint).
 
     GET https://www.asus.com/support/webapi/ProductV2/GetPDDrivers
         ?website=us&model=<model>&pdhashedid=&cpu=&osid=<osid>&pdid=99999&siteID=www&sitelang=
 
-Структура ответа:
+Response structure:
 {
   "Result": {
     "Obj": [
-      {"Name": "Audio", "Files": [
-several по типу
+      {"Name": "Audio", "Files": [several of these
         {"Id": "...Realtek Codec Console Application", "Version": "latest version at the MS store", ...},
         {"Id": "...Audio_DriverOnly_Dolby_DCH_Realtek_J_V6.0.9768.1_41645_1.exe", "INFDate": "12-03-2024", ...},
       ]},
@@ -21,10 +20,11 @@ several по типу
   }
 }
 
-Версия реального установочного пакета зашита в имя файла ("_V6.0.9768.1_"),
-а не в отдельном поле Version (то иногда занято служебным текстом вроде
-"latest version at the MS store" — MS Store приложение, не установщик,
-такие записи пропускаем). Дата — INFDate в формате MM-DD-YYYY.
+The version of the actual installable package is baked into the file
+name ("_V6.0.9768.1_"), not into a separate Version field (which is
+sometimes occupied by boilerplate text like "latest version at the MS
+store" — an MS Store app, not an installer; such entries are skipped).
+The date is INFDate in MM-DD-YYYY format.
 """
 
 import re
@@ -37,7 +37,7 @@ from providers.http_utils import DEFAULT_HEADERS
 
 API_URL = "https://www.asus.com/support/webapi/ProductV2/GetPDDrivers"
 
-# 52 — код Windows 11 64-bit в системе ASUS (подтверждено на реальном запросе)
+# 52 — the code for Windows 11 64-bit in ASUS's system (confirmed on a real request)
 DEFAULT_OS_ID = "52"
 
 _VERSION_IN_FILENAME_RE = re.compile(r"_V([\d.]+)_")
@@ -52,13 +52,13 @@ def _parse_inf_date(date_str: str):
 
 class AsusLaptopDriverProvider(DriverProvider):
     """
-    category: точное имя категории в ответе API — "Audio", "Networking",
-    "Chipset" и т.п. (видно в самом ответе, у ASUS не всегда совпадает
-    с тем, что было бы логично предположить — например LAN у них
-    "Networking", не "Lan").
-    match_substrings: подстроки, обязательные в Id/ExeModule файла
-    (например ("Realtek",) чтобы не спутать с другим вендором в той же
-    категории).
+    category: the exact category name in the API response — "Audio",
+    "Networking", "Chipset", etc. (visible in the response itself; for
+    ASUS it doesn't always match what you'd logically expect — e.g.
+    their LAN category is called "Networking", not "Lan").
+    match_substrings: substrings required in the file's Id/ExeModule
+    (e.g. ("Realtek",) so we don't confuse it with another vendor in the
+    same category).
     """
 
     def __init__(self, model: str, category: str, match_substrings: tuple[str, ...], os_id: str = DEFAULT_OS_ID, name: str = "asus_laptop_driver"):
@@ -105,7 +105,7 @@ class AsusLaptopDriverProvider(DriverProvider):
                 continue
             version_match = _VERSION_IN_FILENAME_RE.search(identifier)
             if version_match is None:
-                continue  # например служебная запись без версии в имени
+                continue  # e.g. a boilerplate entry with no version in the name
             candidates.append((f, version_match.group(1)))
 
         if not candidates:

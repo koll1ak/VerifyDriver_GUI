@@ -1,14 +1,14 @@
 """
-Универсальный провайдер для страниц Intel Download Center
+General-purpose provider for Intel Download Center pages
 (intel.com/content/www/us/en/download/<ID>/<slug>.html).
 
-Такие страницы рендерятся на сервере, и версия/дата лежат прямо в
-мета-тегах — JS/API не нужен. Но intel.com, как и msi.com, прикрыт
-Akamai с TLS-фингерпринтингом — обычный requests/urllib3 получает 403
-ещё до того, как сервер посмотрит на заголовки. Поэтому используется
-curl_cffi (impersonate="chrome"), как и в providers/msi_bios.py.
+These pages are server-rendered, and the version/date are right there
+in meta tags — no JS/API needed. But intel.com, like msi.com, is behind
+Akamai with TLS fingerprinting — plain requests/urllib3 gets a 403
+before the server even looks at the headers. So curl_cffi is used
+(impersonate="chrome"), same as in providers/msi_bios.py.
 
-Известные ID:
+Known IDs:
 - 19347   — Intel Chipset Device Software (Chipset INF Utility)
 - 785597  — Intel Arc & Iris Xe Graphics Driver (Windows)
 """
@@ -40,7 +40,7 @@ class IntelDownloadCenterProvider(DriverProvider):
         self.name = name
 
     def matches(self, device: dict) -> bool:
-        # вызывается отдельно из main.py, не через обход PnP-устройств
+        # called separately from main.py, not via the PnP device scan
         return False
 
     def get_latest(self, device: dict = None) -> dict | None:
@@ -62,7 +62,7 @@ class IntelDownloadCenterProvider(DriverProvider):
 
 
 def get_current_intel_chipset_version() -> str | None:
-    """Версия установленного Intel Chipset Device Software (из реестра Uninstall)."""
+    """The version of the installed Intel Chipset Device Software (from the Uninstall registry key)."""
     ps_command = (
         "Get-ItemProperty "
         "'HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*', "

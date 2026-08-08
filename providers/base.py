@@ -1,8 +1,8 @@
 class DriverProvider:
     """
-    Базовый интерфейс провайдера.
-    matches()   — решает, относится ли устройство из сканера к этому вендору
-    get_latest() — возвращает актуальную версию из внешнего источника
+    Base provider interface.
+    matches()   — decides whether a device from the scanner belongs to this vendor
+    get_latest() — returns the current version from an external source
     """
 
     name = "base"
@@ -12,8 +12,8 @@ class DriverProvider:
 
     def get_latest(self, device: dict) -> dict | None:
         """
-        Должен вернуть dict вида:
+        Should return a dict shaped like:
         {"version": "576.88", "date": "2026-06-01", "url": "https://..."}
-        или None, если не удалось найти данные.
+        or None if no data could be found.
         """
         raise NotImplementedError

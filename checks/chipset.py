@@ -11,9 +11,9 @@ INTEL_CHIPSET_SLUG = "chipset-inf-utility"
 
 
 def check_amd_chipset(devices, board, laptop):
-    # сначала проверяем, есть ли вообще AMD-платформа в системе — если нет
-    # (например Intel-ноутбук), молча пропускаем, не пугая ложным
-    # предупреждением про "не удалось определить чипсет"
+    # first check whether there's an AMD platform in the system at all —
+    # if not (e.g. an Intel laptop), silently skip instead of scaring the
+    # user with a false "couldn't detect chipset" warning
     has_amd_platform = find_device(
         devices,
         lambda d: d.get("VendorID") == "1022" and any(
@@ -22,13 +22,13 @@ def check_amd_chipset(devices, board, laptop):
         ),
     ) is not None
     if not has_amd_platform:
-        return None  # платформа не AMD — молча пропускаем
+        return None  # not an AMD platform — silently skip
 
     page_url = board.get("amd_chipset_url")
     if page_url is None:
         print(
-            "[AMD Chipset] AMD-платформа найдена, но не удалось определить "
-            "чипсет платы автоматически (board_detect.py не распознал модель)",
+            "[AMD Chipset] AMD platform found, but couldn't determine "
+            "the board chipset automatically (board_detect.py didn't recognize the model)",
             file=sys.stderr,
         )
         return None
@@ -36,7 +36,7 @@ def check_amd_chipset(devices, board, laptop):
     provider = AmdChipsetProvider(page_url=page_url)
     device = find_device(devices, provider)
     if device is None:
-        return None  # устройство не найдено в системе — молча пропускаем
+        return None  # device not found in the system — silently skip
 
     ok, latest = safe_get_latest("AMD Chipset", provider, device)
     if not ok:
@@ -45,9 +45,10 @@ def check_amd_chipset(devices, board, laptop):
 
 
 def check_intel_chipset(devices, board, laptop):
-    # проверяем, есть ли вообще Intel-платформа в системе (по PCI Vendor ID),
-    # прежде чем идти на сайт — на AMD-системе Intel Chipset Software
-    # никогда не будет установлен, и сверка не имеет смысла
+    # check whether there's an Intel platform in the system at all (by
+    # PCI Vendor ID) before hitting the site — on an AMD system Intel
+    # Chipset Software will never be installed, and a comparison
+    # wouldn't make sense
     intel_platform_device = find_device(
         devices,
         lambda d: d.get("VendorID") == "8086" and any(
@@ -56,14 +57,14 @@ def check_intel_chipset(devices, board, laptop):
         ),
     )
     if intel_platform_device is None:
-        return None  # платформа не Intel — молча пропускаем
+        return None  # not an Intel platform — silently skip
 
-    # ОСНОВНОЙ путь: community-база (не официальный источник Intel, но
-    # общедоступная и активно поддерживаемая) даёт версию конкретно ДЛЯ
-    # ЭТОЙ платформы (по Hardware ID) — та же система счёта, что видна
-    # в установленной системе, поэтому сравнение получается осмысленным
-    # (в отличие от версии пакета целиком с сайта Intel — см. историю
-    # в комментариях ниже, почему от неё пришлось отказаться).
+    # PRIMARY path: a community database (not an official Intel source,
+    # but public and actively maintained) gives a version specifically
+    # FOR THIS platform (by Hardware ID) — the same numbering scheme seen
+    # on the installed system, so the comparison ends up meaningful
+    # (unlike the version of the package as a whole from Intel's site —
+    # see the comment below for why we had to move away from that).
     hwid = intel_platform_device.get("DeviceID_PCI")
     current = intel_platform_device.get("DriverVersion")
 
@@ -71,23 +72,25 @@ def check_intel_chipset(devices, board, laptop):
         try:
             db_latest = IntelChipsetInfDbProvider(hwid=hwid).get_latest()
         except Exception as e:
-            print(f"[Intel Chipset] ошибка (community-база): {classify_error(e)}", file=sys.stderr)
+            print(f"[Intel Chipset] error (community database): {classify_error(e)}", file=sys.stderr)
             db_latest = None
         if db_latest is not None:
-            # версия для сравнения — из community-базы (точная, по HWID),
-            # но ссылка для человека должна вести на официальную страницу
-            # Intel, откуда реально качать установщик — не на сырой .md
-            # файл базы данных, который нужен был только для сравнения
+            # the version used for comparison comes from the community
+            # database (accurate, by HWID), but the link shown to the
+            # person should point to the official Intel page where the
+            # installer can actually be downloaded — not to the raw .md
+            # file of the database, which was only needed for comparison
             db_latest["url"] = (
                 f"https://www.intel.com/content/www/us/en/download/"
                 f"{INTEL_CHIPSET_DOWNLOAD_ID}/{INTEL_CHIPSET_SLUG}.html"
             )
             return report("Intel Chipset", db_latest, current, comparator=no_downgrade_match)
 
-    # ЗАПАСНОЙ путь: официальная страница Intel, но только версия пакета
-    # целиком — сверка с установленной версией здесь принципиально
-    # невозможна (версия пакета живёт в другой системе счёта, чем версия
-    # конкретного компонента для конкретного поколения процессора).
+    # FALLBACK path: the official Intel page, but only the version of the
+    # package as a whole — comparing against the installed version is
+    # fundamentally impossible here (the package version lives in a
+    # different numbering scheme than the version of a specific
+    # component for a specific CPU generation).
     provider = IntelDownloadCenterProvider(
         download_id=INTEL_CHIPSET_DOWNLOAD_ID, slug=INTEL_CHIPSET_SLUG, name="intel_chipset"
     )
@@ -95,13 +98,14 @@ def check_intel_chipset(devices, board, laptop):
     if not ok:
         return None
 
-    # ВАЖНО: изначально тут была попытка брать версию PnP-драйвера SMBus-
-    # контроллера как fallback, если реестр пуст — оказалось, что это
-    # неверно: версия конкретного PnP-компонента (SMBus) не обязана
-    # совпадать с версией всего пакета "Chipset Device Software" целиком
-    # (подтверждено на практике: после реальной установки пакета версия
-    # SMBus-драйвера не изменилась, сравнение продолжало ложно показывать
-    # "обновление доступно"). Поэтому используем только реестр — если он
-    # пуст, честно показываем "сверить не удалось", а не гадаем.
+    # IMPORTANT: there was originally an attempt here to fall back to the
+    # PnP driver version of the SMBus controller when the registry was
+    # empty — turned out that's wrong: the version of a specific PnP
+    # component (SMBus) doesn't have to match the version of the whole
+    # "Chipset Device Software" package (confirmed in practice: after
+    # actually installing the package, the SMBus driver version didn't
+    # change, and the comparison kept falsely showing "update
+    # available"). So we only use the registry — if it's empty, we
+    # honestly show "couldn't compare" instead of guessing.
     current = get_current_intel_chipset_version()
     return report("Intel Chipset", latest, current)

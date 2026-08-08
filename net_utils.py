@@ -1,8 +1,8 @@
 """
-Общие утилиты для сетевых проверок: быстрая проверка интернета перед
-основным прогоном и классификация ошибок в понятные сообщения — чтобы
-при отсутствии сети не получить 10 разных непонятных traceback-ов
-подряд, а одно ясное сообщение.
+Shared utilities for network checks: a quick internet check before the
+main run, and classification of errors into readable messages — so that
+when there's no network you get one clear message instead of ten
+different confusing tracebacks in a row.
 """
 
 import socket
@@ -10,9 +10,10 @@ import socket
 
 def has_internet_connection(timeout: float = 3.0) -> bool:
     """
-    Быстрая проверка: получается ли вообще открыть TCP-соединение наружу.
-    Не проверяет доступность конкретных сайтов вендоров (они могут быть
-    недоступны и при рабочем интернете) — только сам факт наличия сети.
+    Quick check: can we open an outbound TCP connection at all.
+    Does not check the availability of specific vendor sites (they can
+    be unreachable even with a working internet connection) — only
+    whether there's a network at all.
     """
     hosts_to_try = [
         ("1.1.1.1", 443),   # Cloudflare
@@ -29,36 +30,36 @@ def has_internet_connection(timeout: float = 3.0) -> bool:
 
 def classify_error(exc: Exception) -> str:
     """
-    Превращает исключение (из requests, curl_cffi или сети вообще)
-    в короткое понятное сообщение на русском.
+    Turns an exception (from requests, curl_cffi, or the network in
+    general) into a short, readable message.
     """
     exc_name = type(exc).__name__
     exc_text = str(exc)
 
-    # requests / curl_cffi поднимают исключения с похожими именами классов —
-    # проверяем по названию типа, чтобы не зависеть от того, какая именно
-    # библиотека использована в конкретном провайдере
+    # requests / curl_cffi raise exceptions with similarly-named classes —
+    # check by type name so we don't depend on which specific library a
+    # given provider happens to use
     if "Timeout" in exc_name:
-        return "сайт не отвечает (таймаут)"
+        return "site is not responding (timeout)"
 
     if "ConnectionError" in exc_name or "ConnectError" in exc_name:
-        return "не удалось подключиться (сайт недоступен или проблема с сетью)"
+        return "could not connect (site unreachable or a network issue)"
 
     if "HTTPError" in exc_name or "HTTPStatusError" in exc_name:
-        # пытаемся вытащить код статуса из текста, если он там есть
+        # try to pull the status code out of the text if it's there
         if "403" in exc_text:
-            return "доступ запрещён (403) — сайт заблокировал запрос"
+            return "access denied (403) — the site blocked the request"
         if "404" in exc_text:
-            return "страница не найдена (404) — возможно, сменился URL/модель"
+            return "page not found (404) — the URL/model may have changed"
         if "500" in exc_text or "502" in exc_text or "503" in exc_text:
-            return "сайт вернул ошибку сервера (сайт временно недоступен)"
-        return f"сайт вернул ошибку: {exc_text}"
+            return "the site returned a server error (temporarily unavailable)"
+        return f"the site returned an error: {exc_text}"
 
     if "JSONDecodeError" in exc_name or "JSONDecode" in exc_name:
-        return "сайт отдал не тот формат данных, что ожидался (возможно, изменилась структура страницы)"
+        return "the site returned an unexpected data format (the page structure may have changed)"
 
     if "SSLError" in exc_name or "SSL" in exc_name:
-        return "ошибка SSL-соединения"
+        return "SSL connection error"
 
-    # неизвестная ошибка — показываем как есть, но без полного traceback
-    return f"неизвестная ошибка ({exc_name}: {exc_text})"
+    # unknown error — show it as-is, but without a full traceback
+    return f"unknown error ({exc_name}: {exc_text})"

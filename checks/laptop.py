@@ -16,10 +16,10 @@ from providers.asus_laptop_driver import AsusLaptopDriverProvider
 
 def _asus_laptop_bios_versions_match(current: str, latest: str) -> bool:
     """
-    Windows отдаёт версию BIOS ASUS-ноутбука с префиксом кода модели
-    (например "S5606CA.312"), сайт — только номер сборки ("313" или "312").
-    Берём хвост после последней точки у установленной версии и сравниваем
-    с версией сайта напрямую.
+    Windows reports the ASUS laptop BIOS version with a model-code
+    prefix (e.g. "S5606CA.312"), while the site only shows the build
+    number ("313" or "312"). We take the tail after the last dot of the
+    installed version and compare it against the site's version directly.
     """
     if not current or not latest:
         return False
@@ -29,8 +29,9 @@ def _asus_laptop_bios_versions_match(current: str, latest: str) -> bool:
 
 def _acer_bios_versions_match(current: str, latest: str) -> bool:
     """
-    Windows отдаёт версию BIOS Acer с префиксом "V" (например "V2.06"),
-    сайт — без него ("2.06") — убираем префикс с обеих сторон перед сравнением.
+    Windows reports the Acer BIOS version with a "V" prefix (e.g.
+    "V2.06"), the site shows it without one ("2.06") — strip the prefix
+    from both sides before comparing.
     """
     if not current or not latest:
         return False
@@ -40,9 +41,10 @@ def _acer_bios_versions_match(current: str, latest: str) -> bool:
 
 def _acer_lan_versions_match(current: str, latest: str) -> bool:
     """
-    Сайт даёт версию с ведущим нулём в одном из сегментов (например
-    "10.038.1118.2019"), Windows — без него ("10.38.1118.2019") — убираем
-    ведущие нули в каждом сегменте перед сравнением.
+    The site gives the version with a leading zero in one of the
+    segments (e.g. "10.038.1118.2019"), Windows shows it without one
+    ("10.38.1118.2019") — strip leading zeros from every segment before
+    comparing.
     """
     if not current or not latest:
         return False
@@ -58,9 +60,9 @@ def _acer_lan_versions_match(current: str, latest: str) -> bool:
 
 def check_dell_bios(devices, board, laptop):
     """
-    Только для Dell-ноутбуков (определяется независимо от board_detect.py,
-    который заточен под десктопные платы) — по Service Tag устройства.
-    НЕ ПРОВЕРЕНО на реальном устройстве, см. providers/dell_support.py.
+    Dell laptops only (detected independently of board_detect.py, which
+    is built for desktop boards) — by the device's Service Tag.
+    NOT VERIFIED on a real device, see providers/dell_support.py.
     """
     tag = laptop_model_if_vendor(laptop, "DELL", "dell_service_tag")
     if tag is None:
@@ -70,13 +72,14 @@ def check_dell_bios(devices, board, laptop):
     ok, latest = safe_get_latest("Dell BIOS", provider)
     if not ok:
         return None
-    # сверки с установленной версией нет — не проверено, какой формат
-    # версии реально отдаёт Windows для Dell BIOS в сравнении с сайтом
+    # no comparison against the installed version — it hasn't been
+    # verified what format Windows actually reports for Dell BIOS
+    # compared to the site
     return report("Dell BIOS", latest, current=None)
 
 
 def check_dell_audio(devices, board, laptop):
-    """Аналогично check_dell_bios, но категория Audio."""
+    """Same as check_dell_bios, but for the Audio category."""
     tag = laptop_model_if_vendor(laptop, "DELL", "dell_service_tag")
     if tag is None:
         return None
@@ -90,9 +93,9 @@ def check_dell_audio(devices, board, laptop):
 
 def check_acer_bios(devices, board, laptop):
     """
-    Только для Acer-ноутбуков — по ModelName (Win32_ComputerSystem.Model
-    без префикса линейки продукта). Структура API проверена на реальных
-    данных (Acer Nitro AN515-55) — надёжность как у десктопных провайдеров.
+    Acer laptops only — by ModelName (Win32_ComputerSystem.Model without
+    the product-line prefix). API structure confirmed on real data
+    (Acer Nitro AN515-55) — as reliable as the desktop providers.
     """
     model_name = laptop_model_if_vendor(laptop, "ACER", "acer_model_name")
     if model_name is None:
@@ -106,14 +109,14 @@ def check_acer_bios(devices, board, laptop):
     ok, latest = safe_get_latest("Acer BIOS", provider)
     if not ok:
         return None
-    # версия BIOS у Acer в простом формате ("2.06"), без привязки к модели
-    # платы (в отличие от MSI) — но Windows добавляет префикс "V" (V2.06),
-    # которого нет на сайте, поэтому сравниваем через отдельный компаратор
+    # Acer's BIOS version is in a plain format ("2.06"), not tied to the
+    # board model (unlike MSI) — but Windows adds a "V" prefix (V2.06)
+    # that isn't on the site, so we compare via a separate comparator
     return report("Acer BIOS", latest, get_current_bios_version(), comparator=_acer_bios_versions_match)
 
 
 def check_acer_audio(devices, board, laptop):
-    """Аналогично check_acer_bios, но категория Audio (с фильтром по ОС)."""
+    """Same as check_acer_bios, but for the Audio category (with an OS filter)."""
     model_name = laptop_model_if_vendor(laptop, "ACER", "acer_model_name")
     if model_name is None:
         return None
@@ -126,43 +129,45 @@ def check_acer_audio(devices, board, laptop):
     ok, latest = safe_get_latest("Acer Audio", provider)
     if not ok:
         return None
-    # пробуем сверить с установленной версией — если реально стоит
-    # фирменный Realtek-драйвер (не общий Windows-драйвер), версии могут
-    # совпасть напрямую (формат вида "6.0.9180.1" похож на то, что
-    # показывает Windows для установленного Realtek-пакета)
+    # try to compare against the installed version — if a proper Realtek
+    # branded driver is actually installed (not the generic Windows
+    # driver), the versions might match directly (a format like
+    # "6.0.9180.1" looks like what Windows shows for an installed
+    # Realtek package)
     current = find_device_driver_version(devices, "10EC", ("AUDIO",)) or \
         find_device_driver_version(devices, "0BDA", ("AUDIO",))
 
     if current is None:
-        # Win32_PnPSignedDriver иногда не видит аудио-устройство (как и на
-        # десктопе с USB-кодеком) — резервный поиск через Get-PnpDevice
+        # Win32_PnPSignedDriver sometimes doesn't see the audio device
+        # (same as on desktop with a USB codec) — fallback lookup via
+        # Get-PnpDevice
         try:
             fallback_devices = get_devices_by_id_pattern("VEN_10EC")
         except Exception as e:
-            print(f"[Acer Audio] ошибка резервного поиска: {classify_error(e)}", file=sys.stderr)
+            print(f"[Acer Audio] fallback lookup error: {classify_error(e)}", file=sys.stderr)
             fallback_devices = []
         audio_device = find_device(fallback_devices, lambda d: "AUDIO" in d.get("DeviceName", "").upper())
         current = audio_device.get("DriverVersion") if audio_device else None
 
     if latest and latest.get("os_mismatch"):
-        # для установленной ОС в каталоге Acer нет отдельной записи —
-        # показываем найденное, но не утверждаем "обновление доступно",
-        # раз не уверены, что версия реально предназначена для этой ОС
-        return f"[Acer Audio] на сайте (другая ОС в каталоге): {latest['version']} — сверка ненадёжна", None
+        # Acer's catalog has no separate entry for the installed OS — we
+        # show what we found, but don't claim "update available" since
+        # we're not sure the version is actually meant for this OS
+        return f"[Acer Audio] on the site (different OS in the catalog): {latest['version']} — comparison isn't reliable", None
 
     return report("Acer Audio", latest, current)
 
 
 def check_acer_lan(devices, board, laptop):
-    """Аналогично check_acer_audio, но категория Lan."""
+    """Same as check_acer_audio, but for the Lan category."""
     model_name = laptop_model_if_vendor(laptop, "ACER", "acer_model_name")
     if model_name is None:
         return None
 
-    # если сетевой чип — Realtek или Intel, эти уже покрыты официальными
-    # проверками (check_realtek_lan / check_intel_lan) — не дублируем и
-    # не подсовываем версию с переупакованной страницы Acer вместо
-    # официального источника вендора чипа
+    # if the network chip is Realtek or Intel, those are already covered
+    # by the official checks (check_realtek_lan / check_intel_lan) — we
+    # don't duplicate them, and we don't substitute a version from
+    # Acer's repackaged page instead of the chip vendor's official source
     has_realtek_lan = find_device(
         devices, lambda d: d.get("VendorID") == "10EC" and "FAMILY CONTROLLER" in d.get("DeviceName", "").upper()
     ) is not None
@@ -181,18 +186,19 @@ def check_acer_lan(devices, board, laptop):
     if not ok:
         return None
 
-    # ищем сетевой адаптер — Killer/Realtek/Intel, у Acer это чаще всего
-    # Killer (иногда на деле переброшенный Realtek-чип под их брендом)
+    # look for a network adapter — Killer/Realtek/Intel, on Acer it's
+    # most often Killer (sometimes actually a rebranded Realtek chip
+    # under their brand)
     current = find_device_driver_version(devices, "10EC", ("ETHERNET", "GIGABIT", "KILLER")) or \
         find_device_driver_version(devices, "8086", ("ETHERNET", "I219", "I225", "I226"))
 
     if current is None:
-        # тот же резервный путь, что и для аудио — на случай, если
-        # Win32_PnPSignedDriver не видит устройство напрямую
+        # the same fallback path as for audio, in case
+        # Win32_PnPSignedDriver doesn't see the device directly
         try:
             fallback_devices = get_devices_by_id_pattern("VEN_10EC")
         except Exception as e:
-            print(f"[Acer LAN] ошибка резервного поиска: {classify_error(e)}", file=sys.stderr)
+            print(f"[Acer LAN] fallback lookup error: {classify_error(e)}", file=sys.stderr)
             fallback_devices = []
         lan_device = find_device(
             fallback_devices,
@@ -201,16 +207,16 @@ def check_acer_lan(devices, board, laptop):
         current = lan_device.get("DriverVersion") if lan_device else None
 
     if latest and latest.get("os_mismatch"):
-        return f"[Acer LAN] на сайте (другая ОС в каталоге): {latest['version']} — сверка ненадёжна", None
+        return f"[Acer LAN] on the site (different OS in the catalog): {latest['version']} — comparison isn't reliable", None
 
     return report("Acer LAN", latest, current, comparator=_acer_lan_versions_match)
 
 
 def check_asus_laptop_bios(devices, board, laptop):
     """
-    ASUS-ноутбук — переиспользует тот же AsusBiosProvider, что и для
-    десктопных плат ASUS (одна и та же структура сайта/страницы), только
-    модель берётся из Win32_ComputerSystem.Model, а не Win32_BaseBoard.
+    ASUS laptop — reuses the same AsusBiosProvider as desktop ASUS
+    boards (same site/page structure), just the model comes from
+    Win32_ComputerSystem.Model instead of Win32_BaseBoard.
     """
     model = laptop_model_if_vendor(laptop, "ASUS", "asus_laptop_model")
     if model is None:
@@ -219,16 +225,17 @@ def check_asus_laptop_bios(devices, board, laptop):
     ok, latest = safe_get_latest("ASUS BIOS", AsusBiosProvider(model=model))
     if not ok:
         return None
-    # пробуем сверить напрямую — формат для ASUS не проверен, если не
-    # совпадёт, разберёмся по реальным данным (как с Acer/MSI ранее)
+    # try comparing directly — the ASUS format hasn't been verified; if
+    # it doesn't match, we'll sort it out from real data (as with
+    # Acer/MSI earlier)
     return report("ASUS BIOS", latest, get_current_bios_version(), comparator=_asus_laptop_bios_versions_match)
 
 
 def check_asus_laptop_audio(devices, board, laptop):
-    """Аналогично check_asus_laptop_bios, но категория Audio (Realtek) —
-    через официальный JSON API (providers/asus_laptop_driver.py), т.к.
-    страница ноутбука подгружает список драйверов через JS, а не отдаёт
-    его сразу в HTML (в отличие от страницы BIOS)."""
+    """Same as check_asus_laptop_bios, but for the Audio (Realtek)
+    category — via the official JSON API (providers/asus_laptop_driver.py),
+    since the laptop page loads the driver list via JS instead of
+    returning it directly in the HTML (unlike the BIOS page)."""
     model = laptop_model_if_vendor(laptop, "ASUS", "asus_laptop_model")
     if model is None:
         return None
@@ -247,7 +254,7 @@ def check_asus_laptop_audio(devices, board, laptop):
         try:
             fallback_devices = get_devices_by_id_pattern("VEN_10EC")
         except Exception as e:
-            print(f"[ASUS Audio] ошибка резервного поиска: {classify_error(e)}", file=sys.stderr)
+            print(f"[ASUS Audio] fallback lookup error: {classify_error(e)}", file=sys.stderr)
             fallback_devices = []
         audio_device = find_device(fallback_devices, lambda d: "AUDIO" in d.get("DeviceName", "").upper())
         current = audio_device.get("DriverVersion") if audio_device else None
@@ -257,13 +264,13 @@ def check_asus_laptop_audio(devices, board, laptop):
 
 def check_asus_laptop_networking(devices, board, laptop):
     """
-    Категория "Networking" у ASUS объединяет WiFi/Bluetooth/LAN вместе.
-    Если WiFi-чип — Intel, эту проверку пропускаем целиком: официальная
-    страница Intel надёжнее и точнее переупакованной версии от ASUS
-    (проверено на практике — ASUS-страница отставала от Intel), и
-    check_intel_wifi уже её покрывает. Проверяем через ASUS только когда
-    WiFi-чип НЕ Intel (MediaTek/Realtek/Killer и т.п.), для которых у нас
-    нет отдельного прямого источника.
+    ASUS's "Networking" category lumps WiFi/Bluetooth/LAN together.
+    If the WiFi chip is Intel, we skip this check entirely: the
+    official Intel page is more reliable and accurate than ASUS's
+    repackaged version (confirmed in practice — the ASUS page lagged
+    behind Intel), and check_intel_wifi already covers it. We check via
+    ASUS only when the WiFi chip is NOT Intel (MediaTek/Realtek/Killer,
+    etc.), for which we don't have a separate direct source.
     """
     model = laptop_model_if_vendor(laptop, "ASUS", "asus_laptop_model")
     if model is None:
@@ -276,7 +283,7 @@ def check_asus_laptop_networking(devices, board, laptop):
         devices, lambda d: d.get("VendorID") == "10EC" and "FAMILY CONTROLLER" in d.get("DeviceName", "").upper()
     ) is not None
     if has_any_wifi or has_realtek_lan:
-        return None  # уже покрыто check_intel_wifi/check_wifi_via_windows_update/check_realtek_lan
+        return None  # already covered by check_intel_wifi/check_wifi_via_windows_update/check_realtek_lan
 
     provider = AsusLaptopDriverProvider(
         model=model, category="Networking", match_substrings=(), name="asus_laptop_networking"
@@ -293,10 +300,10 @@ def check_asus_laptop_networking(devices, board, laptop):
 
 def check_huawei_bios(devices, board, laptop):
     """
-    Для BIOS ноутбуков Huawei нет официального источника по производителю
-    чипа (в отличие от компонентов вроде WiFi/Chipset — BIOS всегда пишет
-    именно вендор ноутбука, а не Intel/Realtek) — просто даём ссылку на
-    поиск по сайту Huawei для ручной проверки, без автоматической сверки.
+    There's no official chip-maker source for Huawei laptop BIOS (unlike
+    components such as WiFi/Chipset — BIOS is always written by the
+    laptop vendor, not Intel/Realtek) — we just give a link to search
+    Huawei's site manually, without an automatic comparison.
     """
     if not laptop.get("is_laptop") or "HUAWEI" not in (laptop.get("manufacturer") or "").upper():
         return None
@@ -304,14 +311,14 @@ def check_huawei_bios(devices, board, laptop):
     url = huawei_search_url(laptop.get("model"))
     if url is None:
         return None
-    return f"[Huawei BIOS] автоматическая проверка недоступна — посети сайт вручную: {url}", None
+    return f"[Huawei BIOS] automatic check unavailable — visit the site manually: {url}", None
 
 
 def check_lenovo_bios(devices, board, laptop):
     """
-    Только для ноутбуков Lenovo — двухшаговое разрешение через API
-    pcsupport.lenovo.com (серийник -> slug продукта -> список драйверов,
-    см. providers/lenovo_support.py). НЕ ПРОВЕРЕНО на реальном устройстве.
+    Lenovo laptops only — a two-step resolution via the
+    pcsupport.lenovo.com API (serial -> product slug -> driver list, see
+    providers/lenovo_support.py). NOT VERIFIED on a real device.
     """
     serial = laptop_model_if_vendor(laptop, "LENOVO", "lenovo_serial")
     if serial is None:
@@ -321,13 +328,14 @@ def check_lenovo_bios(devices, board, laptop):
     ok, latest = safe_get_latest("Lenovo BIOS", provider)
     if not ok:
         return None
-    # сверки с установленной версией нет — не проверено, какой формат
-    # версии реально отдаёт Windows для Lenovo BIOS в сравнении с сайтом
+    # no comparison against the installed version — it hasn't been
+    # verified what format Windows actually reports for Lenovo BIOS
+    # compared to the site
     return report("Lenovo BIOS", latest, current=None)
 
 
 def check_lenovo_audio(devices, board, laptop):
-    """Аналогично check_lenovo_bios, но категория Audio."""
+    """Same as check_lenovo_bios, but for the Audio category."""
     serial = laptop_model_if_vendor(laptop, "LENOVO", "lenovo_serial")
     if serial is None:
         return None

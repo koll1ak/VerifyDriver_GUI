@@ -1,6 +1,6 @@
 """
-Общие HTTP-константы для провайдеров — единый User-Agent и таймаут,
-чтобы не дублировать одно и то же в каждом файле.
+Shared HTTP constants for the providers — a single User-Agent and
+timeout so we don't duplicate the same thing in every file.
 """
 
 DEFAULT_USER_AGENT = (

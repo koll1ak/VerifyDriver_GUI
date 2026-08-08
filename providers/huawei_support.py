@@ -1,36 +1,35 @@
 """
-Ноутбуки Huawei — BIOS.
+Huawei laptops — BIOS.
 
-Раньше здесь была попытка полностью автоматического резолвинга через API
-самого Huawei (модель из WMI -> offeringCode -> версия BIOS), включая
-headless-браузер (Playwright) для обхода защиты сайта — отказались от
-этого пути: слишком тяжёлая зависимость (полноценный Chromium) ради
-одного вендора, и даже с ней сайт остаётся хрупким источником.
+There used to be an attempt at fully automatic resolution via Huawei's
+own API (model from WMI -> offeringCode -> BIOS version), including a
+headless browser (Playwright) to get past the site's protection — that
+approach was dropped: too heavy a dependency (a full Chromium) for a
+single vendor, and even with it the site remains a fragile source.
 
-Компоненты (чипсет/WiFi/Bluetooth — Intel; Audio/LAN — Realtek) уже
-сравниваются напрямую с сайтами ПРОИЗВОДИТЕЛЕЙ ЧИПОВ (main.py:
-check_intel_*, check_realtek_*) — они работают одинаково на любом
-ноутбуке независимо от вендора, включая Huawei, без единой строчки
-специфичного кода. Специального источника не хватает только для BIOS —
-для него ни у одного производителя чипов нет публичной страницы (BIOS
-всегда пишет именно вендор ноутбука/платы), поэтому просто даём ссылку
-на поиск по сайту Huawei для ручной проверки, без попытки автоматически
-скачать/сравнить версию.
+Components (chipset/WiFi/Bluetooth — Intel; Audio/LAN — Realtek) are
+already compared directly against the CHIP MAKERS' sites (main.py:
+check_intel_*, check_realtek_*) — those work the same way on any laptop
+regardless of vendor, including Huawei, with zero vendor-specific code.
+A dedicated source is only missing for BIOS — no chip maker has a public
+page for it (BIOS is always written by the laptop/board vendor), so we
+just give a link to search Huawei's site manually, without attempting to
+automatically download/compare the version.
 """
 
 
 def huawei_search_url(wmi_model: str) -> str | None:
     """
-    Ссылка на поиск по сайту Huawei — для ручной проверки. Формат
-    подтверждён на реальном сетевом трафике сайта (страница поиска
-    consumer.huawei.com/en/search/?keyword=<запрос>).
+    A link to search Huawei's site — for a manual check. The format is
+    confirmed against real network traffic from the site (search page
+    consumer.huawei.com/en/search/?keyword=<query>).
 
-    WMI иногда дублирует последний символ кода модели (например
-    "MCLF-XX", тогда как реальный код на сайте — "MCLF-X", один "X") —
-    подтверждено эмпирически на реальном устройстве: поиск с двойным
-    символом на конце ничего не находит. Если последние два символа
-    совпадают — убираем один, это не меняет сам номер модели, только
-    убирает дублирование.
+    WMI sometimes duplicates the last character of the model code (e.g.
+    "MCLF-XX", whereas the real code on the site is "MCLF-X", a single
+    "X") — confirmed empirically on a real device: searching with a
+    doubled character at the end finds nothing. If the last two
+    characters match, we drop one — this doesn't change the model
+    number itself, just removes the duplication.
     """
     if not wmi_model:
         return None

@@ -18,24 +18,24 @@ INTEL_BLUETOOTH_SLUG = "intel-wireless-bluetooth-drivers-for-windows-10-and-wind
 
 
 def check_realtek_lan(devices, board, laptop):
-    provider_finder = RealtekLanProvider()  # только для matches(), не для get_latest()
+    provider_finder = RealtekLanProvider()  # only for matches(), not for get_latest()
     device = find_device(devices, provider_finder)
     if device is None:
-        return None  # Realtek-сетевой карты нет в системе — молча пропускаем, на сайт не идём
+        return None  # no Realtek network card in the system — silently skip, don't hit the site
 
     current = device.get("DriverVersion")
     variant = detect_realtek_lan_variant(current)
 
-    # выбираем ТОТ ЖЕ вариант драйвера на сайте (NDIS/NetAdapterCx), что
-    # реально установлен — раньше здесь всегда бралась только версия
-    # NetAdapterCx, даже если на машине стоит NDIS (или наоборот), из-за
-    # чего сравнение было в принципе бессмысленным (сравнивали два разных
-    # драйверных фреймворка с разной нумерацией). Оба варианта
-    # подтверждены на реальных устройствах.
+    # pick the SAME driver variant on the site (NDIS/NetAdapterCx) as
+    # what's actually installed — this used to always take the
+    # NetAdapterCx version, even if the machine had NDIS installed (or
+    # vice versa), which made the comparison fundamentally meaningless
+    # (comparing two different driver frameworks with different
+    # numbering). Both variants are confirmed on real devices.
     if variant == "ndis":
         match_substrings = ("NDIS", "Not Support Power Saving")
         comparator = realtek_ndis_versions_match
-    else:  # netadaptercx или unknown — используем NetAdapterCx как и раньше
+    else:  # netadaptercx or unknown — use NetAdapterCx as before
         match_substrings = ("NetAdapterCx", "Not Support Power Saving")
         comparator = realtek_versions_match
 
@@ -45,44 +45,45 @@ def check_realtek_lan(devices, board, laptop):
         return None
 
     if variant == "unknown":
-        # неопознанный формат (например старые 1GbE-чипы, где версия
-        # оканчивается на год, а не build-номер) — сравнивать номера
-        # версий напрямую небезопасно; запасной путь — по ДАТЕ, она есть
-        # в обеих системах и не зависит от особенностей нумерации
-        # конкретного поколения чипа.
-        # ВАЖНО: ссылка на скачивание в этом случае берётся из варианта
-        # NetAdapterCx (используем как справочную точку для даты) — но
-        # для старых чипов с легаси-нумерацией версии этот конкретный
-        # файл МОЖЕТ ОКАЗАТЬСЯ НЕСОВМЕСТИМЫМ (подтверждено на практике:
-        # установка не поменяла версию даже после чистой переустановки
-        # и перезагрузки) — не факт, что это правильный пакет для чипа.
+        # unrecognized format (e.g. older 1GbE chips, where the version
+        # ends with a year instead of a build number) — comparing
+        # version numbers directly isn't safe; the fallback is by DATE,
+        # which exists on both sides and doesn't depend on the specific
+        # numbering quirks of a given chip generation.
+        # IMPORTANT: the download link in this case is taken from the
+        # NetAdapterCx variant (used as a reference point for the date)
+        # — but for older chips with legacy version numbering this
+        # specific file MAY TURN OUT TO BE INCOMPATIBLE (confirmed in
+        # practice: installing it didn't change the version even after
+        # a clean reinstall and reboot) — it's not guaranteed to be the
+        # right package for that chip.
         installed_date = parse_flexible_date(device.get("DriverDate", ""))
         site_date = parse_flexible_date(latest.get("date", "")) if latest else None
         if installed_date and site_date:
-            if (site_date - installed_date).days > 60:  # порог, чтобы не шуметь на мелких расхождениях
+            if (site_date - installed_date).days > 60:  # threshold to avoid noise on small discrepancies
                 display = (
-                    f"[Realtek LAN] возможно устарел (по дате, не по версии — сверка ненадёжна для "
-                    f"этого чипа): драйвер от {installed_date.date()}, на сайте есть от {site_date.date()}"
+                    f"[Realtek LAN] possibly outdated (by date, not by version — comparison isn't reliable for "
+                    f"this chip): installed driver from {installed_date.date()}, site has one from {site_date.date()}"
                 )
                 update_line = (
-                    f"Realtek LAN: возможно устарел — драйвер от {installed_date.date()}, "
-                    f"на сайте LAN-категория целиком: https://www.realtek.com/Download/List?cate_id=584 "
-                    f"(автовыбранный файл может не подойти именно этому чипу — выбери вариант вручную)"
+                    f"Realtek LAN: possibly outdated — installed driver from {installed_date.date()}, "
+                    f"the whole LAN category on the site: https://www.realtek.com/Download/List?cate_id=584 "
+                    f"(the auto-picked file may not be right for this specific chip — pick manually)"
                 )
                 return display, update_line
-            return f"[Realtek LAN] актуально по дате (драйвер от {installed_date.date()})", None
-        current = None  # не удалось сверить ни по версии, ни по дате
+            return f"[Realtek LAN] up to date by date (installed driver from {installed_date.date()})", None
+        current = None  # couldn't compare by either version or date
 
     return report("Realtek LAN", latest, current, comparator=comparator)
 
 
 def check_realtek_wifi(devices, board, laptop):
     """
-    Realtek WLAN-чипы (RTL8723/RTL8821/RTL8822 и т.п.) — отдельная
-    категория на сайте Realtek (cate_id=673). Автоматическую сверку версий
-    пока не делаем (current=None) — не подтверждено реальными данными, что
-    формат версии Windows сопоставим с версией сайта (как это было
-    выведено для LAN на конкретном чипе).
+    Realtek WLAN chips (RTL8723/RTL8821/RTL8822, etc.) — a separate
+    category on Realtek's site (cate_id=673). We don't do an automatic
+    version comparison yet (current=None) — it hasn't been confirmed on
+    real data that the Windows version format is comparable to the
+    site's format (the way it was worked out for LAN on a specific chip).
     """
     provider = RealtekWifiProvider()
     device = find_device(devices, provider)
@@ -97,9 +98,9 @@ def check_realtek_wifi(devices, board, laptop):
 
 def check_realtek_usb_lan(devices, board, laptop):
     """
-    Внешние USB-адаптеры/докстанции Ethernet от Realtek — отдельная
-    категория (cate_id=585) от встроенных PCIe-чипов. Тоже без
-    автоматической сверки версий (см. check_realtek_wifi).
+    External USB Ethernet adapters/dongles from Realtek — a separate
+    category (cate_id=585) from built-in PCIe chips. Also without an
+    automatic version comparison (see check_realtek_wifi).
     """
     provider = RealtekUsbLanProvider()
     device = find_device(devices, provider)
@@ -117,7 +118,7 @@ def check_intel_lan(devices, board, laptop):
         devices, "8086", ("ETHERNET", "I219", "I225", "I226", "I210", "I350")
     )
     if current is None:
-        return None  # Intel-сетевой карты нет в системе — молча пропускаем
+        return None  # no Intel network card in the system — silently skip
 
     provider = IntelDownloadCenterProvider(
         download_id=INTEL_LAN_DOWNLOAD_ID, slug=INTEL_LAN_SLUG, name="intel_lan"
@@ -125,15 +126,16 @@ def check_intel_lan(devices, board, laptop):
     ok, latest = safe_get_latest("Intel LAN", provider)
     if not ok:
         return None
-    # "Complete Driver Pack" — общий пакет под все модели, версия пакета
-    # не всегда 1:1 совпадает с версией конкретного установленного драйвера
+    # the "Complete Driver Pack" is a single package for all models, its
+    # version doesn't always match 1:1 with the version of the specific
+    # installed driver
     return report("Intel LAN", latest, current=None)
 
 
 def check_intel_wifi(devices, board, laptop):
     current = find_device_driver_version(devices, "8086", ("WI-FI", "WIRELESS"))
     if current is None:
-        return None  # Intel-WiFi карты нет в системе — молча пропускаем
+        return None  # no Intel WiFi card in the system — silently skip
 
     provider = IntelDownloadCenterProvider(
         download_id=INTEL_WIFI_DOWNLOAD_ID, slug=INTEL_WIFI_SLUG, name="intel_wifi"
@@ -141,20 +143,20 @@ def check_intel_wifi(devices, board, laptop):
     ok, latest = safe_get_latest("Intel WiFi", provider)
     if not ok:
         return None
-    # официальная страница Intel надёжнее переупакованной версии от вендора
-    # ноутбука — но всё равно не предлагаем "откат", если уже стоит версия
-    # новее той, что показывает сайт (бывает, что сайт просто не успел
-    # обновиться)
+    # the official Intel page is more reliable than a laptop vendor's
+    # repackaged version — but we still don't suggest a "downgrade" if
+    # the installed version is already newer than what the site shows
+    # (happens when the site just hasn't caught up yet)
     return report("Intel WiFi", latest, current, comparator=no_downgrade_match)
 
 
 def check_intel_bluetooth(devices, board, laptop):
-    # ВАЖНО: Intel Bluetooth-устройства в Windows числятся под ДРУГИМ
-    # PCI/USB Vendor ID — 8087, а не 8086 (тот используется для WiFi/
-    # чипсета/GPU) — подтверждено на реальном устройстве.
+    # IMPORTANT: Intel Bluetooth devices in Windows are listed under a
+    # DIFFERENT PCI/USB Vendor ID — 8087, not 8086 (which is used for
+    # WiFi/chipset/GPU) — confirmed on a real device.
     current = find_device_driver_version(devices, "8087", ("BLUETOOTH",))
     if current is None:
-        return None  # Intel Bluetooth-модуля нет в системе — молча пропускаем
+        return None  # no Intel Bluetooth module in the system — silently skip
 
     provider = IntelDownloadCenterProvider(
         download_id=INTEL_BLUETOOTH_DOWNLOAD_ID, slug=INTEL_BLUETOOTH_SLUG, name="intel_bluetooth"
@@ -167,17 +169,17 @@ def check_intel_bluetooth(devices, board, laptop):
 
 def check_bluetooth_via_windows_update(devices, board, laptop):
     """
-    Для Bluetooth-модулей НЕ Intel (Qualcomm, MediaTek и т.п.) — та же
-    логика, что и для WiFi (check_wifi_via_windows_update): у большинства
-    таких вендоров нет отдельной официальной страницы загрузок, поэтому
-    единственный официальный источник — Microsoft Update Catalog.
+    For non-Intel Bluetooth modules (Qualcomm, MediaTek, etc.) — the
+    same logic as for WiFi (check_wifi_via_windows_update): most such
+    vendors don't have a separate official downloads page, so the only
+    official source is the Microsoft Update Catalog.
     """
     bt_device = find_device(
         devices,
         lambda d: d.get("VendorID") not in ("8086", "8087") and "BLUETOOTH" in d.get("DeviceName", "").upper(),
     )
     if bt_device is None:
-        return None  # Intel уже покрыт check_intel_bluetooth, других Bluetooth-модулей нет
+        return None  # Intel is already covered by check_intel_bluetooth, no other Bluetooth modules
 
     device_name = bt_device.get("DeviceName", "")
     current = bt_device.get("DriverVersion")
@@ -189,28 +191,28 @@ def check_bluetooth_via_windows_update(devices, board, laptop):
     if latest is None:
         return None
 
-    # поиск по строке названия устройства не гарантирует идеальное
-    # совпадение варианта (см. историю с MediaTek WiFi выше) — не
-    # предлагаем "откат"
+    # searching by the device name string doesn't guarantee an exact
+    # match to the right variant (see the MediaTek WiFi story above) —
+    # we don't suggest a "downgrade"
     return report(f"Bluetooth ({device_name})", latest, current, comparator=no_downgrade_match)
 
 
 def check_wifi_via_windows_update(devices, board, laptop):
     """
-    Для WiFi-чипов НЕ Intel (Qualcomm, некоторые MediaTek и т.д.), у которых
-    нет отдельной официальной страницы загрузок производителя — драйверы
-    распространяются только через Windows Update. Единственный официальный
-    источник в этом случае — Microsoft Update Catalog, ищем по точному
-    имени устройства из Windows.
+    For non-Intel WiFi chips (Qualcomm, some MediaTek, etc.) that don't
+    have a separate official downloads page from the maker — drivers are
+    only distributed via Windows Update. The only official source in
+    this case is the Microsoft Update Catalog; we search by the exact
+    device name reported by Windows.
     """
     wifi_device = find_device(
         devices,
         lambda d: d.get("VendorID") not in ("8086", "8087", "10EC")
-        and "BLUETOOTH" not in d.get("DeviceName", "").upper()  # "Wireless" совпадает и с Bluetooth-устройствами
+        and "BLUETOOTH" not in d.get("DeviceName", "").upper()  # "Wireless" also matches Bluetooth devices
         and any(kw in d.get("DeviceName", "").upper() for kw in ("WI-FI", "WIRELESS", "WLAN")),
     )
     if wifi_device is None:
-        return None  # Intel уже покрыт check_intel_wifi, других WiFi-чипов нет
+        return None  # Intel is already covered by check_intel_wifi, no other WiFi chips
 
     device_name = wifi_device.get("DeviceName", "")
     current = wifi_device.get("DriverVersion")
@@ -222,6 +224,7 @@ def check_wifi_via_windows_update(devices, board, laptop):
     if latest is None:
         return None
 
-    # поиск по строке названия устройства не гарантирует идеальное
-    # совпадение варианта — как и с OEM-страницами, не предлагаем "откат"
+    # searching by the device name string doesn't guarantee an exact
+    # match to the right variant — same as with OEM pages, we don't
+    # suggest a "downgrade"
     return report(f"WiFi ({device_name})", latest, current, comparator=no_downgrade_match)

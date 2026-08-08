@@ -3,16 +3,15 @@ from providers.nvidia import NvidiaProvider, get_current_nvidia_version
 from providers.amd_gpu import AmdGpuProvider
 from providers.intel_download import IntelDownloadCenterProvider
 
-# AMD Software: Adrenalin Edition — одна и та же версия драйвера указана
-# на ЛЮБОЙ странице продукта AMD (дискретные карты и APU-графика в
-# процессорах используют общий универсальный пакет, подтверждено на
-# практике: одинаковый номер версии виден и на странице видеокарты, и
-# на странице процессора с APU) — поэтому подходит любая валидная
-# страница продукта AMD, даже если сама встроенная графика — другой
-# модели. Здесь — страница конкретно Ryzen 7 9800X3D (встроенная
-# RDNA2-графика, 2 CU), структура страницы проверена: версия драйвера
-# и ссылка на Release Notes (RN-RAD-WIN) парсятся так, как ожидает
-# AmdGpuProvider.
+# AMD Software: Adrenalin Edition — the exact same driver version is
+# shown on ANY AMD product page (discrete cards and CPU-integrated APU
+# graphics use a shared universal package, confirmed in practice: the
+# same version number appears both on the graphics card page and on the
+# processor-with-APU page) — so any valid AMD product page works, even
+# if the actual integrated graphics is a different model. This one is
+# specifically the Ryzen 7 9800X3D page (integrated RDNA2 graphics,
+# 2 CU); the page structure has been verified: the driver version and
+# the Release Notes link (RN-RAD-WIN) parse the way AmdGpuProvider expects.
 AMD_GPU_PAGE_URL = "https://www.amd.com/en/support/downloads/drivers.html/processors/ryzen/ryzen-9000-series/amd-ryzen-7-9800x3d.html"
 
 INTEL_GPU_DOWNLOAD_ID = "785597"
@@ -23,7 +22,7 @@ def check_nvidia(devices, board, laptop):
     provider = NvidiaProvider()
     device = find_device(devices, provider)
     if device is None:
-        return None  # устройство не найдено в системе — молча пропускаем
+        return None  # device not found in the system — silently skip
 
     ok, latest = safe_get_latest("NVIDIA", provider, device)
     if not ok:
@@ -32,11 +31,12 @@ def check_nvidia(devices, board, laptop):
 
 
 def check_amd_gpu(devices, board, laptop):
-    # ищем AMD-видеокарту среди устройств, даже если URL ещё не настроен —
-    # чтобы подсказать точное имя карты для поиска на amd.com.
-    # ВАЖНО: у видеокарт AMD Vendor ID "1002" (унаследовано от ATI), а не
-    # "1022" (тот используется для чипсета/CPU-устройств) — подтверждено
-    # на реальном устройстве, изначально был баг с перепутанными ID.
+    # look for an AMD graphics card among the devices even if the URL
+    # isn't configured yet — so we can hint at the exact card name to
+    # search for on amd.com.
+    # IMPORTANT: AMD graphics cards have Vendor ID "1002" (inherited from
+    # ATI), not "1022" (used for chipset/CPU devices) — confirmed on a
+    # real device, there was originally a bug with the IDs swapped.
     amd_gpu_device = find_device(
         devices,
         lambda d: d.get("VendorID") == "1002" and any(
@@ -44,31 +44,33 @@ def check_amd_gpu(devices, board, laptop):
         ),
     )
     if amd_gpu_device is None:
-        return None  # устройство не найдено в системе — молча пропускаем
+        return None  # device not found in the system — silently skip
 
     provider = AmdGpuProvider(page_url=AMD_GPU_PAGE_URL)
     ok, latest = safe_get_latest("AMD GPU", provider, amd_gpu_device)
     if not ok:
         return None
-    # AmdGpuProvider явно указывает флагом comparable_with_windows_version,
-    # можно ли доверять сравнению (см. providers/amd_gpu.py) — если версию
-    # с сайта удалось перевести в формат "Windows Driver Store Version"
-    # (тот же, что видит Windows), сравниваем напрямую; если нет — версия
-    # осталась маркетинговой ("26.7.1"), сравнивать с ней небезопасно
+    # AmdGpuProvider explicitly sets a comparable_with_windows_version
+    # flag telling us whether the comparison can be trusted (see
+    # providers/amd_gpu.py) — if the site's version could be converted
+    # to the "Windows Driver Store Version" format (the same one Windows
+    # sees), we compare directly; if not, the version stayed the
+    # marketing one ("26.7.1"), and comparing against it isn't safe
     current = amd_gpu_device.get("DriverVersion") if latest and latest.get("comparable_with_windows_version") else None
     return report("AMD GPU", latest, current)
 
 
 def check_intel_gpu(devices, board, laptop):
-    # ВАЖНО: пакет драйвера (ID 785597) — это конкретно "Intel Arc & Iris Xe
-    # Graphics", он НЕ подходит для более старых встроенных GPU (например
-    # "Intel UHD Graphics" на платформах до Xe-поколения, вроде Comet Lake) —
-    # установка на несовместимом железе даёт ошибку "No supported devices".
-    # Поэтому ищем строго по словам "ARC" или "IRIS XE", а не по общему
-    # "GRAPHICS"/голому "IRIS" (последнее ловит и старый Iris Plus/Pro).
+    # IMPORTANT: the driver package (ID 785597) is specifically "Intel
+    # Arc & Iris Xe Graphics" — it does NOT work for older integrated
+    # GPUs (e.g. "Intel UHD Graphics" on pre-Xe platforms like Comet
+    # Lake) — installing on unsupported hardware gives a "No supported
+    # devices" error. So we search strictly for "ARC" or "IRIS XE", not
+    # the generic "GRAPHICS"/bare "IRIS" (the latter also matches the
+    # older Iris Plus/Pro).
     current = find_device_driver_version(devices, "8086", ("ARC", "IRIS XE"))
     if current is None:
-        return None  # устройство не найдено в системе (или не Xe-поколения) — молча пропускаем
+        return None  # device not found in the system (or not Xe-generation) — silently skip
 
     provider = IntelDownloadCenterProvider(
         download_id=INTEL_GPU_DOWNLOAD_ID, slug=INTEL_GPU_SLUG, name="intel_gpu"
@@ -76,5 +78,5 @@ def check_intel_gpu(devices, board, laptop):
     ok, latest = safe_get_latest("Intel GPU", provider)
     if not ok:
         return None
-    # у Intel версия в Windows обычно совпадает с маркетинговой напрямую
+    # for Intel, the Windows version usually matches the marketing version directly
     return report("Intel GPU", latest, current)

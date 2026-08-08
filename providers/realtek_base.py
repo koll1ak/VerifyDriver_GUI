@@ -1,8 +1,8 @@
 """
-Общая логика для провайдеров категорий на realtek.com — LAN и Audio
-используют один и тот же JSON API, отличаются только cate_id и способом
-выбора нужной записи в списке (LAN фильтрует по подстроке в Description,
-Audio просто берёт самую свежую).
+Shared logic for the category providers on realtek.com — LAN and Audio
+use the same JSON API, differing only in cate_id and how the right entry
+is picked from the list (LAN filters by a substring in Description,
+Audio just takes the newest one).
 
     GET https://www.realtek.com/Download/ListAllDownloadItem?cate_id=<CATE_ID>
 """
@@ -22,10 +22,10 @@ HEADERS = {**DEFAULT_HEADERS, "Accept": "application/json"}
 
 class RealtekCategoryProvider(DriverProvider):
     """
-    Базовый класс для любой категории на realtek.com/Download/ListAllDownloadItem.
-    Наследники обязаны реализовать matches() под свой Vendor ID/тип устройства,
-    и могут передать match_substrings для фильтрации конкретного варианта
-    драйвера внутри категории (если в ней несколько вариантов).
+    Base class for any category on realtek.com/Download/ListAllDownloadItem.
+    Subclasses must implement matches() for their Vendor ID/device type,
+    and may pass match_substrings to filter down to a specific driver
+    variant within the category (if it has several variants).
     """
 
     def __init__(self, cate_id: str, match_substrings: tuple[str, ...] | None = None):
@@ -43,7 +43,7 @@ class RealtekCategoryProvider(DriverProvider):
                 (i for i in windows_items if all(s in i.get("Description", "") for s in self.match_substrings)),
                 None,
             )
-        return windows_items[0]  # список отсортирован: новые сверху
+        return windows_items[0]  # the list is sorted: newest first
 
     def get_latest(self, device: dict = None) -> dict | None:
         resp = requests.get(

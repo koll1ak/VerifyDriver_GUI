@@ -1,12 +1,12 @@
 """
-Провайдер для драйверов, которые распространяются ТОЛЬКО через Windows
-Update, без отдельной страницы загрузок у производителя чипа (типичный
-случай для Qualcomm/некоторых MediaTek WiFi-модулей — в отличие от Intel,
-у которого есть отдельная официальная страница, см. providers/intel_download.py).
+Provider for drivers distributed ONLY via Windows Update, with no
+separate downloads page from the chip maker (typical for
+Qualcomm/some MediaTek WiFi modules — unlike Intel, which has a
+separate official page, see providers/intel_download.py).
 
     GET https://www.catalog.update.microsoft.com/Search.aspx?q=<query>
 
-Страница server-rendered (обычная HTML-таблица), JS не нужен.
+The page is server-rendered (a plain HTML table), no JS needed.
 """
 
 import re
@@ -23,10 +23,10 @@ SEARCH_URL = "https://www.catalog.update.microsoft.com/Search.aspx"
 
 class MsCatalogProvider(DriverProvider):
     """
-    query: поисковый запрос — обычно точное имя устройства из Windows
-           (например "Qualcomm QCA6174" или "MediaTek Wi-Fi 6")
-    title_contains: доп. фильтр по названию записи в каталоге, если нужно
-                     сузить (например "Driver"), можно оставить пустым
+    query: the search query — usually the exact device name from Windows
+           (e.g. "Qualcomm QCA6174" or "MediaTek Wi-Fi 6")
+    title_contains: an extra filter on the catalog entry's title, if you
+                     need to narrow it down (e.g. "Driver"), can be left empty
     """
 
     def __init__(self, query: str, title_contains: str = "", name: str = "ms_catalog"):
@@ -57,7 +57,7 @@ class MsCatalogProvider(DriverProvider):
         for row in table.find_all("tr"):
             cells = row.find_all("td")
             if len(cells) < 6:
-                continue  # пропускаем заголовок и служебные строки
+                continue  # skip the header and other non-data rows
 
             title = cells[1].get_text(strip=True)
             if self.title_contains and self.title_contains.upper() not in title.upper():
@@ -83,7 +83,7 @@ class MsCatalogProvider(DriverProvider):
 
     @staticmethod
     def _parse_date(date_str: str):
-        # формат вида "1/20/2026"
+        # format like "1/20/2026"
         try:
             return datetime.strptime(date_str, "%m/%d/%Y")
         except ValueError:

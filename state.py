@@ -18,9 +18,9 @@ def save_state(state: dict) -> None:
 
 def diff_and_update(state: dict, key: str, latest_version: str) -> str | None:
     """
-    Сравнивает latest_version с сохранённой версией по ключу key.
-    Возвращает старую версию, если обнаружено обновление, иначе None.
-    Всегда обновляет state под новую версию.
+    Compares latest_version with the saved version under key.
+    Returns the old version if an update was found, otherwise None.
+    Always updates the state to the new version.
     """
     old_version = state.get(key, {}).get("version")
     state[key] = {"version": latest_version}

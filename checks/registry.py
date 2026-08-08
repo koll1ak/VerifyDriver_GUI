@@ -19,9 +19,9 @@ CATEGORY_ORDER = [
     "BIOS", "Chipset", "Integrated GPU", "GPU", "Audio", "LAN", "WiFi", "Bluetooth",
 ]
 
-# (категория, функция) — категория используется только для порядка в
-# итоговой сводке; сама проверка выполняется параллельно всех вместе,
-# порядок живого вывода (по мере завершения) от этого не зависит
+# (category, function) — the category is only used for ordering in the
+# final summary; the check itself runs in parallel with all the others,
+# the order of live output (as they complete) doesn't depend on this
 CHECKS = [
     ("BIOS", check_bios),
     ("BIOS", check_dell_bios),

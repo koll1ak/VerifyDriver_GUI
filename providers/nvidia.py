@@ -1,20 +1,22 @@
 """
-Провайдер NVIDIA.
+NVIDIA provider.
 
-Логика:
-1. По имени устройства из сканера находим pfid (Product Family ID, внутренний
-   идентификатор NVIDIA) в открытом справочнике ZenitH-AT/nvidia-data.
-2. Дергаем официальный AjaxDriverService (тот же backend, которым пользуется
-   страница ручного поиска драйверов на nvidia.com) — получаем актуальную
-   версию, дату и ссылку.
+Logic:
+1. Look up pfid (Product Family ID, NVIDIA's internal identifier) by the
+   device name from the scanner, using the open ZenitH-AT/nvidia-data
+   reference.
+2. Hit the official AjaxDriverService (the same backend the manual
+   driver-search page on nvidia.com uses) — get the current version,
+   date, and link.
 
-osID подбирается автоматически под установленную Windows (10 или 11) —
-у NVIDIA это разные ID в справочнике (57 и 135 соответственно), хотя
-для современных карт пакет драйвера обычно один и тот же на обе версии.
+osID is picked automatically based on the installed Windows version (10
+or 11) — for NVIDIA these are different IDs in the reference (57 and 135
+respectively), though for modern cards the driver package is usually the
+same for both versions.
 
-Источники:
-- https://github.com/ZenitH-AT/nvidia-data  (файлы gpu-data.json, os-data.json в корне репо)
-- https://github.com/ZenitH-AT/nvidia-update (пример реального запроса к API)
+Sources:
+- https://github.com/ZenitH-AT/nvidia-data  (gpu-data.json, os-data.json files in the repo root)
+- https://github.com/ZenitH-AT/nvidia-update (example of a real API request)
 """
 
 import re
@@ -28,34 +30,37 @@ from providers.base import DriverProvider
 GPU_DATA_URL = "https://raw.githubusercontent.com/ZenitH-AT/nvidia-data/main/gpu-data.json"
 AJAX_URL = "https://gfwsl.geforce.com/services_toolkit/services/com/nvidia/services/AjaxDriverService.php"
 
-# osID из os-data.json: 57 = "Windows 10 64-bit", 135 = "Windows 11"
+# osID from os-data.json: 57 = "Windows 10 64-bit", 135 = "Windows 11"
 OS_ID_WINDOWS_10 = "57"
 OS_ID_WINDOWS_11 = "135"
-WINDOWS_11_MIN_BUILD = 22000  # первый билд, который Microsoft называет "Windows 11"
+WINDOWS_11_MIN_BUILD = 22000  # the first build Microsoft calls "Windows 11"
 
 
 def detect_windows_os_id() -> str:
     """
-    Определяет правильный osID под установленную Windows.
-    sys.getwindowsversion() надёжнее, чем platform.release() — последний
-    на Windows 11 иногда всё ещё возвращает "10" из-за общей кодовой базы.
-    Если не Windows (или определить не удалось) — по умолчанию Win10 ID,
-    он же исторически самый совместимый вариант в API NVIDIA.
+    Determines the right osID for the installed Windows version.
+    sys.getwindowsversion() is more reliable than platform.release() —
+    the latter sometimes still returns "10" on Windows 11 because of the
+    shared code base.
+    If not Windows (or it couldn't be determined) — defaults to the Win10
+    ID, which is also historically the most compatible option in
+    NVIDIA's API.
     """
     try:
         build = sys.getwindowsversion().build
     except AttributeError:
-        return OS_ID_WINDOWS_10  # не Windows — используем дефолт
+        return OS_ID_WINDOWS_10  # not Windows — use the default
 
     return OS_ID_WINDOWS_11 if build >= WINDOWS_11_MIN_BUILD else OS_ID_WINDOWS_10
 
 
 def get_current_nvidia_version() -> str | None:
     """
-    Реальная установленная версия драйвера через nvidia-smi — она сразу
-    в маркетинговом формате (например "610.88"), без возни с внутренним
-    форматом версии Windows (Win32_PnPSignedDriver даёт что-то вроде
-    "32.0.15.6108", откуда маркетинговую версию не так просто восстановить).
+    The actual installed driver version via nvidia-smi — it's already in
+    the marketing format (e.g. "610.88"), avoiding the hassle of
+    Windows's internal version format (Win32_PnPSignedDriver gives
+    something like "32.0.15.6108", from which the marketing version
+    isn't easy to reconstruct).
     """
     result = subprocess.run(
         ["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"],
@@ -71,15 +76,16 @@ class NvidiaProvider(DriverProvider):
     name = "nvidia"
 
     def __init__(self, os_id: str | None = None):
-        # если os_id не передан явно — определяем автоматически по системе
+        # if os_id isn't passed explicitly — auto-detect from the system
         self.os_id = os_id or detect_windows_os_id()
         self._gpu_data = None
 
     def matches(self, device: dict) -> bool:
-        # VendorID 10DE (NVIDIA) используется не только видеокартой, но и её
-        # HDMI-аудио устройством ("NVIDIA High Definition Audio") — фильтр
-        # только по "NVIDIA" в имени слишком широкий и может случайно
-        # поймать аудио вместо GPU. Требуем характерное для видеокарты слово.
+        # VendorID 10DE (NVIDIA) is used not just by the graphics card
+        # but also by its HDMI audio device ("NVIDIA High Definition
+        # Audio") — filtering only on "NVIDIA" in the name is too broad
+        # and could accidentally match the audio device instead of the
+        # GPU. Require a word characteristic of a graphics card.
         if device.get("VendorID") != "10DE":
             return False
         name_upper = device.get("DeviceName", "").upper()
@@ -100,18 +106,19 @@ class NvidiaProvider(DriverProvider):
     @staticmethod
     def _normalize_variant_name(name: str) -> str:
         """
-        По документации самого справочника ZenitH-AT/nvidia-data: некоторые
-        варианты имени от Windows не совпадают ключ-в-ключ с базой — нужно
-        привести "Super" к "SUPER" и убрать типичные суффиксы (объём памяти,
-        аббревиатуры производителя ноутбука в скобках, "with Max-Q Design",
-        "Laptop GPU" — этот суффикс Windows добавляет для мобильных карт
-        начиная с 30-й серии, в оригинальном списке справочника его не было).
+        Per the ZenitH-AT/nvidia-data reference's own documentation: some
+        of the name variants reported by Windows don't match the
+        database key-for-key — need to normalize "Super" to "SUPER" and
+        strip typical suffixes (memory size, laptop-vendor abbreviations
+        in parentheses, "with Max-Q Design", "Laptop GPU" — Windows adds
+        this suffix for mobile cards starting with the 30-series, it
+        wasn't in the reference's original list).
         """
         name = name.replace("Super", "SUPER")
         for pattern in (
             r"\s+\(Laptop GPU\)$",
             r"\s+Laptop GPU$",
-            r"\s+\([^)]*\)$",                # любой суффикс в скобках
+            r"\s+\([^)]*\)$",                # any parenthesized suffix
             r"\s+\d+GB$",                     # "8GB"
             r"\s+COLLECTORS EDITION$",
             r"\s+with Max-Q Design$",
@@ -124,7 +131,7 @@ class NvidiaProvider(DriverProvider):
             section_data = gpu_data.get(section, {})
             if name in section_data:
                 return section_data[name]
-        return gpu_data.get(name)  # на случай плоской структуры (без desktop/notebook)
+        return gpu_data.get(name)  # in case of a flat structure (no desktop/notebook)
 
     def get_latest(self, device: dict) -> dict | None:
         gpu_data = self._load_gpu_data()
@@ -139,9 +146,9 @@ class NvidiaProvider(DriverProvider):
 
         if pfid is None:
             print(
-                f"[nvidia] карта не найдена в справочнике по имени "
-                f"\"{clean_name}\" (и после нормализации тоже) — возможно, "
-                f"нужно вручную свериться с gpu-data.json",
+                f"[nvidia] card not found in the reference by name "
+                f"\"{clean_name}\" (nor after normalization) — you may "
+                f"need to check gpu-data.json manually",
                 file=sys.stderr,
             )
             return None

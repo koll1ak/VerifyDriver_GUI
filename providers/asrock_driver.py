@@ -1,16 +1,17 @@
 """
-Провайдер для драйверов с сайта ASRock (не BIOS) — та же схема сайта,
-что и у BIOS (providers/asrock_bios.py):
+Provider for (non-BIOS) drivers from the ASRock site — the same site
+layout as BIOS (providers/asrock_bios.py):
 
     https://www.asrock.com/mb/<family>/<MODEL NAME>/driver.html
 
-ВАЖНО: точная структура таблицы на странице driver.html НЕ была
-проверена напрямую (в отличие от bios.html, которую разбирали по
-реальному HTML) — колонки могут идти в другом порядке или их может
-быть больше (например добавлена колонка OS, как оказалось на Gigabyte).
-Поэтому здесь версия/дата/размер ищутся по паттерну содержимого ячейки,
-а не по фиксированному индексу — устойчивее к неизвестной раскладке
-колонок, но при первом реальном запуске стоит свериться с выводом.
+IMPORTANT: the exact table structure on the driver.html page was NOT
+verified directly (unlike bios.html, which was inspected against real
+HTML) — the columns might be in a different order or there might be
+more of them (e.g. an added OS column, as turned out to be the case for
+Gigabyte). So version/date/size are found here by matching the content
+pattern of a cell rather than by a fixed index — more resilient to an
+unknown column layout, but the output is worth checking against the
+real page on first run.
 """
 
 import re
@@ -30,7 +31,7 @@ _VERSION_RE = re.compile(r"^[\dvV][\d.]*$")
 
 
 class AsrockDriverProvider(DriverProvider):
-    """match_substrings: подстроки, обязательные в тексте строки (например ("Realtek", "Audio"))."""
+    """match_substrings: substrings required in the row's text (e.g. ("Realtek", "Audio"))."""
 
     def __init__(self, model: str, match_substrings: tuple[str, ...], family: str = "amd", name: str = "asrock_driver"):
         self.model = model
@@ -77,7 +78,7 @@ class AsrockDriverProvider(DriverProvider):
                     "date": date,
                     "size": size,
                     "url": download_link,
-                    "raw_row_text": row_text,  # на случай если авто-разбор не сработал — видно, что реально в строке
+                    "raw_row_text": row_text,  # in case auto-parsing didn't work — shows what's actually in the row
                 }
 
         return None

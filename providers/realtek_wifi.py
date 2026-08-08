@@ -1,9 +1,9 @@
 """
-Провайдер Realtek WLAN (WiFi) — тонкая обёртка над RealtekCategoryProvider.
+Realtek WLAN (WiFi) provider — a thin wrapper over RealtekCategoryProvider.
 
-cate_id=673 — "Realtek PCIe WLAN Family Controller Software", покрывает
-чипы RTL8723BE/RTL8821AE/RTL8822BE/RTL8821CE/RTL8723DE (WLAN+Bluetooth
-комбо) и RTL8812AE/RTL8192EE/RTL8188EE (только WLAN).
+cate_id=673 — "Realtek PCIe WLAN Family Controller Software", covers the
+RTL8723BE/RTL8821AE/RTL8822BE/RTL8821CE/RTL8723DE chips (WLAN+Bluetooth
+combo) and RTL8812AE/RTL8192EE/RTL8188EE (WLAN only).
 """
 
 from providers.realtek_base import RealtekCategoryProvider
