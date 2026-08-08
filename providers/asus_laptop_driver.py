@@ -115,9 +115,17 @@ class AsusLaptopDriverProvider(DriverProvider):
             candidates, key=lambda pair: _parse_inf_date(pair[0].get("INFDate", "")) or datetime.min
         )
 
+        # DownloadUrl is either an absolute link (e.g. an MS Store page)
+        # or a path relative to ASUS's CDN (confirmed against a real
+        # response) — same relative-path shape as providers/asus_bios.py
+        download_url = (best_file.get("DownloadUrl") or {}).get("Global")
+        if download_url and download_url.startswith("/"):
+            download_url = "https://dlcdnets.asus.com" + download_url
+
         return {
             "version": best_version,
             "date": best_file.get("INFDate"),
             "size": best_file.get("FileSize"),
             "description": best_file.get("Description"),
+            "url": download_url,
         }
