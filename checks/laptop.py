@@ -5,7 +5,7 @@ from scanner import get_devices_by_id_pattern
 from checks.common import (
     find_device, find_device_driver_version, laptop_model_if_vendor, safe_get_latest, report, no_downgrade_match,
 )
-from providers.dell_support import DellSupportProvider
+from providers.dell_support import dell_drivers_url
 from providers.acer_support import AcerSupportProvider
 from providers.huawei_support import huawei_search_url
 from providers.lenovo_support import LenovoSupportProvider
@@ -62,33 +62,33 @@ def check_dell_bios(devices, board, laptop):
     """
     Dell laptops only (detected independently of board_detect.py, which
     is built for desktop boards) — by the device's Service Tag.
-    NOT VERIFIED on a real device, see providers/dell_support.py.
+    Automatic checking isn't possible: Dell's site is confirmed blocked
+    by Akamai (403 with or without curl_cffi's Chrome impersonation, see
+    providers/dell_support.py) — same situation as Huawei BIOS, so we
+    just link to the drivers page for a manual check instead.
     """
     tag = laptop_model_if_vendor(laptop, "DELL", "dell_service_tag")
     if tag is None:
         return None
 
-    provider = DellSupportProvider(service_tag=tag, category="BIOS", name="dell_bios")
-    ok, latest = safe_get_latest("Dell BIOS", provider)
-    if not ok:
+    url = dell_drivers_url(tag)
+    if url is None:
         return None
-    # no comparison against the installed version — it hasn't been
-    # verified what format Windows actually reports for Dell BIOS
-    # compared to the site
-    return report("Dell BIOS", latest, current=None)
+    return f"[Dell BIOS] automatic check unavailable — visit the site manually: {url}", None
 
 
 def check_dell_audio(devices, board, laptop):
-    """Same as check_dell_bios, but for the Audio category."""
+    """Same as check_dell_bios, but for the Audio category — Dell has no
+    other source for laptop audio (unlike WiFi/Bluetooth, which still
+    get the Windows Update Catalog fallback)."""
     tag = laptop_model_if_vendor(laptop, "DELL", "dell_service_tag")
     if tag is None:
         return None
 
-    provider = DellSupportProvider(service_tag=tag, category="Audio", name="dell_audio")
-    ok, latest = safe_get_latest("Dell Audio", provider)
-    if not ok:
+    url = dell_drivers_url(tag)
+    if url is None:
         return None
-    return report("Dell Audio", latest, current=None)
+    return f"[Dell Audio] automatic check unavailable — visit the site manually: {url}", None
 
 
 def check_acer_bios(devices, board, laptop):
