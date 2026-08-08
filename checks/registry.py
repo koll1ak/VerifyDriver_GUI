@@ -16,6 +16,8 @@ from checks.laptop import (
     check_hp_bios, check_hp_audio,
     check_msi_laptop_bios, check_msi_laptop_audio,
     check_gigabyte_laptop_bios, check_gigabyte_laptop_audio,
+    check_samsung_bios, check_samsung_audio,
+    check_lg_bios, check_lg_audio,
 )
 
 CATEGORY_ORDER = [
@@ -35,6 +37,8 @@ CHECKS = [
     ("BIOS", check_hp_bios),
     ("BIOS", check_msi_laptop_bios),
     ("BIOS", check_gigabyte_laptop_bios),
+    ("BIOS", check_samsung_bios),
+    ("BIOS", check_lg_bios),
     ("Chipset", check_amd_chipset),
     ("Chipset", check_intel_chipset),
     ("Integrated GPU", check_intel_gpu),
@@ -49,6 +53,8 @@ CHECKS = [
     ("Audio", check_hp_audio),
     ("Audio", check_msi_laptop_audio),
     ("Audio", check_gigabyte_laptop_audio),
+    ("Audio", check_samsung_audio),
+    ("Audio", check_lg_audio),
     ("LAN", check_realtek_lan),
     ("LAN", check_realtek_usb_lan),
     ("LAN", check_intel_lan),

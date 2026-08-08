@@ -13,6 +13,7 @@ from providers.hp_support import HpSupportProvider
 from providers.msi_bios import get_current_bios_version
 from providers.msi_laptop import MsiLaptopBiosProvider, MsiLaptopDriverProvider
 from providers.gigabyte_laptop import GigabyteLaptopProvider
+from providers.lg_support import LgSupportProvider
 from providers.asus_bios import AsusBiosProvider
 from providers.asus_laptop_driver import AsusLaptopDriverProvider
 
@@ -495,3 +496,61 @@ def check_gigabyte_laptop_audio(devices, board, laptop):
     # confirmed live the version (e.g. "6.0.9679.1") is in the same
     # dotted format WMI reports, so a direct comparison is meaningful
     return report("GIGABYTE Laptop Audio", latest, current)
+
+
+def check_samsung_bios(devices, board, laptop):
+    """
+    Samsung laptops only. Samsung distributes driver/firmware updates
+    through its official "Samsung Download Center" desktop application
+    rather than a straightforward web download page — confirmed live
+    that the web support portal's download modal (support.samsung.com,
+    reached via /us/support/computing/windows-laptops/?modelCode=...)
+    doesn't render any usable content in an automated browser session,
+    even after using its own internal search box. Given that, and that
+    there's no simpler API found, we just point at the official app
+    instead of attempting a check that doesn't work.
+    """
+    if not laptop.get("is_laptop") or "SAMSUNG" not in (laptop.get("manufacturer") or "").upper():
+        return None
+    return '[Samsung BIOS] automatic check unavailable — download and visit the "Samsung Download Center" application', None
+
+
+def check_samsung_audio(devices, board, laptop):
+    """Same as check_samsung_bios, but for the Audio category."""
+    if not laptop.get("is_laptop") or "SAMSUNG" not in (laptop.get("manufacturer") or "").upper():
+        return None
+    return '[Samsung Audio] automatic check unavailable — download and visit the "Samsung Download Center" application', None
+
+
+def check_lg_bios(devices, board, laptop):
+    """
+    LG (gram) laptops only. Confirmed live (see providers/lg_support.py)
+    that gram laptops don't offer a standalone downloadable BIOS file
+    through the support site at all — BIOS updates are folded into the
+    "LG Update" auto-updater tool instead. Rather than attempt a check
+    that's confirmed to never find anything, we just point at that tool.
+    """
+    if not laptop.get("is_laptop") or "LG" not in (laptop.get("manufacturer") or "").upper():
+        return None
+    return '[LG BIOS] latest BIOS can be checked in the "LG Update" application', None
+
+
+def check_lg_audio(devices, board, laptop):
+    """Same as check_lg_bios, but for the Audio category."""
+    model = laptop_model_if_vendor(laptop, "LG", "lg_model")
+    if model is None:
+        return None
+
+    provider = LgSupportProvider(base_model=model, category="Audio", name="lg_audio")
+    ok, latest = safe_get_latest("LG Audio", provider)
+    if not ok:
+        return None
+
+    current = find_device_driver_version(devices, "10EC", ("AUDIO",)) or \
+        find_device_driver_version(devices, "0BDA", ("AUDIO",))
+
+    # comparison attempted since the version format (e.g. "24.10.0.4",
+    # extracted from the title's "Ver.X" suffix) looks WMI-comparable
+    # for other categories, but this hasn't been confirmed for an
+    # actual Audio entry specifically (none was found in live testing)
+    return report("LG Audio", latest, current)
