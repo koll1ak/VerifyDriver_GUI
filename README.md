@@ -1,74 +1,75 @@
 # VerifyDriver (driver-watch)
 
-Автономный Python-скрипт для Windows: проверяет актуальность драйверов
-сразу по множеству категорий и вендоров, без ручного ввода данных —
-всё, что нужно, определяется автоматически по железу конкретной машины.
+An autonomous Python script for Windows that checks whether your drivers
+are up to date across many categories and vendors at once — no manual
+input required, everything is auto-detected from the machine's own
+hardware.
 
-## Что проверяется
+## What gets checked
 
-| Категория | Источники |
+| Category | Sources |
 |---|---|
-| BIOS | MSI, Gigabyte, ASRock, ASUS (десктоп) · Dell, Acer, ASUS, Lenovo, Huawei (ноутбуки, ссылка вручную) |
+| BIOS | MSI, Gigabyte, ASRock, ASUS (desktop) · Dell, Acer, ASUS, Lenovo, Huawei (laptops, manual link) |
 | Chipset | AMD, Intel |
 | Integrated GPU | Intel |
 | GPU | NVIDIA, AMD, Intel |
-| Audio | Страница вендора платы (MSI/Gigabyte/ASRock/ASUS) → Microsoft Update Catalog как fallback · Dell, Acer, ASUS, Lenovo (ноутбуки) · SenaryTech |
+| Audio | Motherboard vendor's page (MSI/Gigabyte/ASRock/ASUS) → Microsoft Update Catalog as fallback · Dell, Acer, ASUS, Lenovo (laptops) · SenaryTech |
 | LAN | Realtek (PCIe + USB), Intel, Acer (Killer/Realtek/Intel) |
-| WiFi | Intel, Realtek, Microsoft Update Catalog (не-Intel чипы), ASUS Networking |
-| Bluetooth | Intel, Microsoft Update Catalog (не-Intel чипы) |
+| WiFi | Intel, Realtek, Microsoft Update Catalog (non-Intel chips), ASUS Networking |
+| Bluetooth | Intel, Microsoft Update Catalog (non-Intel chips) |
 
-Проверки выполняются параллельно (`ThreadPoolExecutor`), вывод
-собирается и печатается разом после завершения всех — в фиксированном
-порядке по категориям, а не по скорости отклика конкретного сайта.
+Checks run in parallel (`ThreadPoolExecutor`); output is collected and
+printed all at once after everything finishes — in a fixed order by
+category, not by which site happened to respond fastest.
 
-## Установка
+## Install
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Запуск
+## Run
 
 ```bash
 python main.py
 ```
 
-## Архитектура
+## Architecture
 
 ```
-main.py              — точка входа: сбор устройств, запуск проверок, печать отчёта
-board_detect.py       — автоопределение вендора/модели материнской платы (десктоп)
-laptop_detect.py       — автоопределение вендора/модели/серийника ноутбука
-scanner.py              — сбор установленных устройств и версий драйверов (WMI)
-net_utils.py             — проверка интернет-соединения, классификация ошибок
+main.py              — entry point: collect devices, run checks, print the report
+board_detect.py       — auto-detects desktop motherboard vendor/model
+laptop_detect.py       — auto-detects laptop vendor/model/serial number
+scanner.py              — collects installed devices and driver versions (WMI)
+net_utils.py             — internet connectivity check, error classification
 
 checks/
-  common.py            — общие хелперы (find_device, safe_get_latest, report, ...)
+  common.py            — shared helpers (find_device, safe_get_latest, report, ...)
   bios.py, chipset.py, gpu.py, audio.py, network.py, laptop.py
-  registry.py           — CHECKS (реестр всех проверок) и CATEGORY_ORDER
+  registry.py           — CHECKS (registry of all checks) and CATEGORY_ORDER
 
-providers/              — по одному файлу на источник (сайт вендора/чипа)
+providers/              — one file per source (vendor/chip website)
 ```
 
-Никаких файлов с ручными настройками нет — всё либо автоопределяется
-по железу, либо (где автоопределение в принципе невозможно, например
-страница поддержки конкретной модели видеокарты AMD) прописано прямо в
-соответствующем модуле `checks/`.
+There are no manual-configuration files — everything is either
+auto-detected from the hardware, or (where auto-detection is simply
+not possible, e.g. the support page for a specific AMD GPU model) is
+hardcoded directly in the relevant `checks/` module.
 
-## Статус проверенности по вендорам
+## Verification status by vendor
 
-Часть провайдеров подтверждена на реальном железе (MSI, AMD, NVIDIA,
-Intel, Realtek LAN, Acer, ASUS — структура страниц и формат сравнения
-версий проверены по факту). Другая часть — Dell и Lenovo — написана по
-задокументированному или подсмотренному в сторонних open-source
-инструментах формату API/страницы, но **не проверена на реальном
-устройстве**: это явно указано в докстринге каждого такого провайдера
-(`providers/dell_support.py`, `providers/lenovo_support.py`). Если у
-вас есть техника этих вендоров — присылайте фидбек/PR с реальными
-данными.
+Some providers have been confirmed against real hardware (MSI, AMD,
+NVIDIA, Intel, Realtek LAN, Acer, ASUS — page structure and version
+comparison logic verified in practice). Others — Dell and Lenovo — were
+written from documented or reverse-engineered API/page formats found in
+third-party open-source tools, but **have not been verified on real
+hardware**: this is stated explicitly in each such provider's docstring
+(`providers/dell_support.py`, `providers/lenovo_support.py`). If you own
+hardware from these vendors, feedback/PRs with real-world data are
+welcome.
 
-## Требования
+## Requirements
 
-- Windows (используются `Get-CimInstance`/WMI через PowerShell)
+- Windows (uses `Get-CimInstance`/WMI via PowerShell)
 - Python 3.10+
 - `pip install -r requirements.txt` (requests, beautifulsoup4, curl_cffi)
