@@ -108,13 +108,41 @@ class AsusBiosProvider(DriverProvider):
         version = re.sub(r"^Version\s+", "", version_text)
 
         download_link = first_box.find("a", href=True)
+        url = download_link["href"] if download_link else self._find_download_url_by_version(resp.text, version)
 
         return {
             "version": version,
             "date": date_text,
             "size": size_text,
-            "url": download_link["href"] if download_link else None,
+            "url": url,
         }
+
+    @staticmethod
+    def _find_download_url_by_version(raw_text: str, version: str) -> str | None:
+        """
+        Confirmed live (real board: PRIME Z370-P II): desktop board BIOS
+        zips aren't named with the generic "<MODEL>_<VER>_BIOS_Update"
+        pattern _extract_via_filename_pattern looks for (that one
+        matches ASUS LAPTOP installers) — they're named per-board, e.g.
+        "PRIME-Z370-P-II-ASUS-3004.ZIP", with no <a href> for them
+        anywhere in the rendered BIOS box (confirmed: 0 links found).
+        The real data lives in the page's own embedded state (minified
+        JS, not valid JSON) as one entry per past BIOS version, shaped
+        like Version:"3004",...,DownloadUrl:{Global:"/pub/.../3004.ZIP"}.
+        The page lists EVERY past version, so anchor the search on the
+        specific version already parsed from the DOM instead of matching
+        blindly — otherwise an old version's file could be picked.
+        """
+        pattern = re.compile(
+            r'Version\s*:\s*"' + re.escape(version) + r'".{0,500}?'
+            r'Global\s*:\s*"((?:/|\\u002[Ff])pub(?:/|\\u002[Ff])[^"]+\.(?:exe|zip))"',
+            re.IGNORECASE,
+        )
+        m = pattern.search(raw_text)
+        if m is None:
+            return None
+        path = m.group(1).replace("\\u002F", "/").replace("\\u002f", "/").replace("\\/", "/")
+        return "https://dlcdnets.asus.com" + path
 
     @staticmethod
     def _extract_via_filename_pattern(raw_text: str) -> dict | None:
