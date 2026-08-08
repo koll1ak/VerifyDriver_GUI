@@ -5,7 +5,6 @@ from scanner import get_devices_by_id_pattern
 from checks.common import find_device, find_device_driver_version, safe_get_latest, report, no_downgrade_match, overall_drivers_page_url
 from providers.msi_driver import MsiDriverProvider, get_installed_inf_version
 from providers.gigabyte_driver import GigabyteDriverProvider
-from providers.asrock_driver import AsrockDriverProvider
 from providers.asus_driver import AsusDriverProvider
 from providers.senary_audio import SenaryAudioProvider
 from providers.ms_catalog import MsCatalogProvider
@@ -102,10 +101,12 @@ def _check_vendor_audio_driver(board, vendor, slug_field, provider_factory, labe
 def check_audio(devices, board, laptop):
     """
     A driver customized for the specific board vendor (MSI/Gigabyte/
-    ASRock/ASUS) takes priority — it more accurately reflects what
-    should actually be installed on that specific board.
+    ASUS) takes priority — it more accurately reflects what should
+    actually be installed on that specific board. ASRock is handled
+    separately below (always a manual link, see the ASRock branch) —
+    its site is confirmed unreachable, not just imprecise.
 
-    If the board IS from one of these vendors but its page couldn't be
+    If the board IS from MSI/Gigabyte/ASUS but its page couldn't be
     reached at all (blocked/network error), we don't fall back to the
     Windows Update Catalog search — confirmed live that it's not a
     reliable source for Realtek audio specifically, since virtually
@@ -115,9 +116,9 @@ def check_audio(devices, board, laptop):
     we point at the vendor's overall drivers page for a manual check.
 
     Windows Update is still tried when no vendor-specific path applies
-    at all (the board isn't from one of these four vendors) or the
-    vendor's site loads fine but simply has nothing under the audio
-    category — neither of those is a reachability problem.
+    at all (the board isn't from one of these vendors) or the vendor's
+    site loads fine but simply has nothing under the audio category —
+    neither of those is a reachability problem.
 
     This function should never run on a laptop: Win32_BaseBoard (which
     desktop board vendor detection relies on) often returns garbage on
@@ -129,6 +130,20 @@ def check_audio(devices, board, laptop):
     """
     if laptop.get("is_laptop"):
         return None
+
+    if board.get("vendor") == "asrock" and board.get("asrock_model"):
+        # automatic checking isn't possible: confirmed live that ASRock's
+        # site is blocked by Incapsula (a JS-challenge bot-protection
+        # system that even curl_cffi's Chrome TLS impersonation can't
+        # get past — same limitation this project already hit for
+        # Huawei) and, worse, the block returns HTTP 200 with a fake
+        # page instead of a clean error, so the old scraping-based
+        # AsrockDriverProvider would silently look like "board not
+        # found" instead of "blocked". Same fix as checks/bios.py's
+        # ASRock branch and Dell: a manual link instead of a check that
+        # can never actually succeed.
+        url = overall_drivers_page_url(board, laptop)
+        return f"[ASRock Audio Driver] automatic check unavailable — visit the site manually: {url}", None
 
     vendor_configs = [
         dict(
@@ -147,17 +162,13 @@ def check_audio(devices, board, laptop):
         dict(
             vendor="gigabyte", slug_field="gigabyte_slug", label="Gigabyte Audio Driver",
             provider_factory=lambda slug: GigabyteDriverProvider(
-                product_slug=slug, match_substrings=("Realtek", "Audio"), name="gigabyte_audio"
+                product_slug=slug, category="Audio", match_substrings=("Realtek",), name="gigabyte_audio"
             ),
-            current_version_getter=None,  # no reliable way to compare, not verified on real data
-        ),
-        dict(
-            vendor="asrock", slug_field="asrock_model", label="ASRock Audio Driver",
-            provider_factory=lambda model: AsrockDriverProvider(
-                model=model, match_substrings=("Realtek", "Audio"),
-                family=board.get("chipset_family", "amd"), name="asrock_audio",
-            ),
-            current_version_getter=None,
+            # confirmed live: the site's version column (e.g. "6.0.9927.1")
+            # is in the same dotted format WMI reports for the installed
+            # driver, so a direct comparison is meaningful
+            current_version_getter=lambda: find_device_driver_version(devices, "10EC", ("AUDIO",))
+            or find_device_driver_version(devices, "0BDA", ("AUDIO",)),
         ),
         dict(
             vendor="asus", slug_field="asus_model", label="ASUS Audio Driver",

@@ -1,10 +1,9 @@
 import sys
 
 from net_utils import classify_error
-from checks.common import report
+from checks.common import report, overall_drivers_page_url
 from providers.msi_bios import MsiBiosProvider, get_current_bios_version
 from providers.gigabyte_bios import GigabyteBiosProvider
-from providers.asrock_bios import AsrockBiosProvider
 from providers.asus_bios import AsusBiosProvider
 
 
@@ -79,12 +78,17 @@ def check_bios(devices, board, laptop):
         if model is None:
             print("[BIOS] ASRock: could not determine the board model", file=sys.stderr)
             return None
-        try:
-            latest = AsrockBiosProvider(model=model, family=board.get("chipset_family", "amd")).get_latest()
-        except Exception as e:
-            print(f"[BIOS] error (ASRock): {classify_error(e)}", file=sys.stderr)
-            return None
-        return report("BIOS", latest, current=None)
+        # automatic checking isn't possible: confirmed live that ASRock's
+        # site is blocked by Incapsula (a JS-challenge bot-protection
+        # system) — curl_cffi's Chrome TLS impersonation, which works
+        # for the Akamai-protected sites elsewhere (Gigabyte/Lenovo/
+        # MSI), does NOT get past it. Worse, the block returns HTTP 200
+        # with a fake page instead of a clean error, so it silently
+        # looks exactly like "board not found" rather than "blocked" —
+        # same underlying situation as Dell, same fix: a manual link
+        # instead of a check that can never actually succeed.
+        url = overall_drivers_page_url(board, laptop)
+        return f"[ASRock BIOS] automatic check unavailable — visit the site manually: {url}", None
 
     if vendor == "asus":
         model = board.get("asus_model")

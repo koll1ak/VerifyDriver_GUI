@@ -3,12 +3,20 @@ BIOS provider for Gigabyte / AORUS boards (it's the same site — AORUS is
 a Gigabyte sub-brand, there's no separate domain/API).
 
 The support page is fully server-rendered, a plain HTML table under a
-"BIOS" heading, no JS/API and no bot protection:
+"BIOS" heading:
 
     https://www.gigabyte.com/Motherboard/<MODEL-SLUG>/support
 
 <MODEL-SLUG> is the board name with spaces replaced by hyphens, e.g.
 "X870-AORUS-STEALTH" for "X870 AORUS STEALTH".
+
+CONFIRMED LIVE: contrary to what this docstring used to claim, the site
+now DOES have bot protection — a plain requests.get() gets a flat 403,
+while curl_cffi with impersonate="chrome" gets a normal 200 with no
+extra steps needed (no session/cookie dance like MSI needs). Before
+this fix, EVERY Gigabyte board's BIOS check was silently failing
+(exception caught in checks/bios.py, nothing printed to the report at
+all) — this wasn't a subtle bug, the check was completely broken.
 
 The list of versions in the table is sorted newest to oldest — we take
 the first row.
@@ -16,7 +24,7 @@ the first row.
 
 import re
 
-import requests
+from curl_cffi import requests
 from bs4 import BeautifulSoup
 
 from providers.base import DriverProvider
@@ -45,7 +53,7 @@ class GigabyteBiosProvider(DriverProvider):
 
     def get_latest(self, device: dict = None) -> dict | None:
         url = SUPPORT_PAGE_URL.format(slug=self.product_slug)
-        resp = requests.get(url, headers=HEADERS, timeout=20)
+        resp = requests.get(url, headers=HEADERS, timeout=20, impersonate="chrome")
         resp.raise_for_status()
 
         soup = BeautifulSoup(resp.text, "html.parser")

@@ -1,17 +1,38 @@
 """
-Provider for (non-BIOS) drivers from the Gigabyte site — the same page
-and the same table structure as BIOS (providers/gigabyte_bios.py), but
-data is looked up under a "Driver" heading instead of "BIOS", and inside
-that section every driver type (Audio/Chipset/APU/RAID etc.) is dumped
-into a single table — we find the right row by a substring in
-Description, not by a separate section heading.
+Provider for (non-BIOS) drivers from the Gigabyte site.
 
     https://www.gigabyte.com/Motherboard/<MODEL-SLUG>/support
+
+CONFIRMED LIVE, two real findings:
+
+1. Same bot-protection fix as providers/gigabyte_bios.py — plain
+   requests.get() gets a flat 403 now, curl_cffi with
+   impersonate="chrome" gets a normal 200. Before this fix EVERY
+   Gigabyte audio check was silently failing.
+
+2. The site has been restructured since this file was originally
+   written: there is no longer one big "Driver" heading with every
+   driver type dumped into a single table. Each category now has its
+   OWN heading directly — "Audio", "Chipset", "LAN", "WLAN+BT", etc. —
+   the exact same layout providers/gigabyte_bios.py already uses for
+   "BIOS". The old code searched for a heading literally named
+   "Driver", which doesn't exist anymore, so it always returned None
+   regardless of the bot-protection issue above.
+
+   Checked live whether the table's OS column (e.g. "Windows 10
+   64bit\\nWindows 11 64bit") means a real board can have TWO
+   concurrent packages for the same version split by OS, the way ASUS/
+   Lenovo do — it does NOT, at least across 5 real boards checked
+   (old and new): the newest row is always either OS-unified (current
+   packages support both) or the only option for its time (older rows
+   predate Windows 11 and just list Windows 10, which is expected, not
+   a conflict). So no OS-matching logic is needed here — "take the
+   first (newest) row" is correct as originally written.
 """
 
 import re
 
-import requests
+from curl_cffi import requests
 from bs4 import BeautifulSoup
 
 from providers.base import DriverProvider
@@ -23,12 +44,16 @@ HEADERS = DEFAULT_HEADERS
 
 class GigabyteDriverProvider(DriverProvider):
     """
-    match_substrings: substrings that must appear in the Description of
-    a table row (e.g. ("Realtek", "Audio") for the audio driver).
+    category: the exact heading text for this driver type on the page
+    (e.g. "Audio", "LAN", "Chipset", "WLAN+BT" — confirmed real values).
+    match_substrings: optional extra filter on the row's Description,
+    in case a category ever lists more than one distinct driver (not
+    observed live so far, kept as a safety net).
     """
 
-    def __init__(self, product_slug: str, match_substrings: tuple[str, ...], name: str = "gigabyte_driver"):
+    def __init__(self, product_slug: str, category: str, match_substrings: tuple[str, ...] = (), name: str = "gigabyte_driver"):
         self.product_slug = product_slug
+        self.category = category
         self.match_substrings = match_substrings
         self.name = name
 
@@ -37,21 +62,21 @@ class GigabyteDriverProvider(DriverProvider):
 
     def get_latest(self, device: dict = None) -> dict | None:
         url = SUPPORT_PAGE_URL.format(slug=self.product_slug)
-        resp = requests.get(url, headers=HEADERS, timeout=20)
+        resp = requests.get(url, headers=HEADERS, timeout=20, impersonate="chrome")
         resp.raise_for_status()
 
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        driver_heading = None
-        for heading in soup.find_all(re.compile(r"^h[1-6]$")):
-            if heading.get_text(strip=True) == "Driver":
-                driver_heading = heading
+        heading = None
+        for tag in soup.find_all(re.compile(r"^h[1-6]$")):
+            if tag.get_text(strip=True) == self.category:
+                heading = tag
                 break
 
-        if driver_heading is None:
+        if heading is None:
             return None
 
-        table = driver_heading.find_next("table")
+        table = heading.find_next("table")
         if table is None:
             return None
 
@@ -60,10 +85,9 @@ class GigabyteDriverProvider(DriverProvider):
         for row in rows:
             cells = row.find_all("td")
             if len(cells) < 5:
-                continue
+                continue  # skip the header row and any other non-data rows
 
-            # the "Driver" table (unlike "BIOS") has an OS column between
-            # Version and Size: Description | Version | OS | Size | Date | Download
+            # confirmed live column order: Description | Version | OS | Size | Date | Download
             description_cell, version_cell, size_cell, date_cell = cells[0], cells[1], cells[3], cells[4]
             description = re.sub(r"\s+", " ", description_cell.get_text(" ", strip=True))
 
