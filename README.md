@@ -9,11 +9,11 @@ hardware.
 
 | Category | Sources |
 |---|---|
-| BIOS | MSI, Gigabyte, ASUS (desktop) · Dell, Acer, ASUS, Lenovo, HP, MSI, Huawei (laptops, manual link for Dell/Huawei) · ASRock (desktop, manual link — site now blocked) |
+| BIOS | MSI, Gigabyte, ASUS (desktop) · Dell, Acer, ASUS, Lenovo, HP, MSI, Gigabyte, Huawei (laptops, manual link for Dell/Huawei) · ASRock (desktop, manual link — site now blocked) |
 | Chipset | AMD, Intel |
 | Integrated GPU | Intel |
 | GPU | NVIDIA, AMD, Intel |
-| Audio | Motherboard vendor's page (MSI/Gigabyte/ASUS) → Microsoft Update Catalog as fallback · Dell, Acer, ASUS, Lenovo, HP, MSI (laptops) · SenaryTech · ASRock (desktop, manual link — site now blocked) |
+| Audio | Motherboard vendor's page (MSI/Gigabyte/ASUS) → Microsoft Update Catalog as fallback · Dell, Acer, ASUS, Lenovo, HP, MSI, Gigabyte (laptops) · SenaryTech · ASRock (desktop, manual link — site now blocked) |
 | LAN | Realtek (PCIe + USB), Intel, Acer (Killer/Realtek/Intel) |
 | WiFi | Intel, Realtek, Microsoft Update Catalog (non-Intel chips), ASUS Networking |
 | Bluetooth | Intel, Microsoft Update Catalog (non-Intel chips) |
@@ -60,11 +60,12 @@ hardcoded directly in the relevant `checks/` module.
 
 Some providers have been confirmed against real hardware (MSI, AMD,
 NVIDIA, Intel, Realtek LAN, Acer, ASUS — page structure and version
-comparison logic verified in practice). Others — Dell, Lenovo, and HP —
-were written from documented/reverse-engineered API formats or (for HP)
-by driving the real site with a browser and capturing its actual
-network requests, but **have not been verified on real hardware**: this
-is stated explicitly in each such provider's docstring
+comparison logic verified in practice). Others — Dell, Lenovo, HP, MSI
+laptop, and Gigabyte laptop — were written from documented/
+reverse-engineered API formats or (for HP and Gigabyte laptop) by
+driving the real site with a browser and capturing its actual network
+requests, but **have not been verified on real hardware**: this is
+stated explicitly in each such provider's docstring
 (`providers/dell_support.py`, `providers/lenovo_support.py`,
 `providers/hp_support.py`). If you own
 hardware from these vendors, feedback/PRs with real-world data are

@@ -61,7 +61,7 @@ def get_laptop_info() -> dict:
         "manufacturer": None, "model": None, "dell_service_tag": None,
         "acer_model_name": None, "acer_part_number": None, "acer_serial": None,
         "asus_laptop_model": None, "lenovo_serial": None, "hp_model": None,
-        "msi_laptop_model": None,
+        "msi_laptop_model": None, "gigabyte_laptop_model": None,
     }
     try:
         result = subprocess.run(
@@ -91,6 +91,7 @@ def get_laptop_info() -> dict:
     # real WMI Manufacturer values used across HP's product history)
     is_hp = "HP" in manufacturer.upper() or "HEWLETT" in manufacturer.upper()
     is_msi = "MICRO-STAR" in manufacturer.upper() or "MSI" in manufacturer.upper()
+    is_gigabyte = "GIGABYTE" in manufacturer.upper()
 
     return {
         "manufacturer": manufacturer or None,
@@ -106,6 +107,10 @@ def get_laptop_info() -> dict:
         # marketing model name is used as a search query instead
         "hp_model": model if (is_hp and model) else None,
         "msi_laptop_model": extract_msi_laptop_slug(model) if (is_msi and model) else None,
+        # same situation as HP: no simpler ID without a real serial to
+        # test against, the raw model name is used as a search query
+        # (see providers/gigabyte_laptop.py risk note)
+        "gigabyte_laptop_model": model if (is_gigabyte and model) else None,
     }
 
 

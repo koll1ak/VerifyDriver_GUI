@@ -12,6 +12,7 @@ from providers.lenovo_support import LenovoSupportProvider
 from providers.hp_support import HpSupportProvider
 from providers.msi_bios import get_current_bios_version
 from providers.msi_laptop import MsiLaptopBiosProvider, MsiLaptopDriverProvider
+from providers.gigabyte_laptop import GigabyteLaptopProvider
 from providers.asus_bios import AsusBiosProvider
 from providers.asus_laptop_driver import AsusLaptopDriverProvider
 
@@ -451,3 +452,46 @@ def check_msi_laptop_audio(devices, board, laptop):
     # confirmed live the version (e.g. "6.0.9597.1") is in the same
     # dotted format WMI reports, so a direct comparison is meaningful
     return report("MSI Laptop Audio", latest, current)
+
+
+def check_gigabyte_laptop_bios(devices, board, laptop):
+    """
+    GIGABYTE/AORUS laptops only — resolved by searching GIGABYTE's own
+    site search with the machine's marketing model name (no simpler ID
+    confirmed without a real serial, see providers/gigabyte_laptop.py).
+    NOT VERIFIED on a real device, though every API step was confirmed
+    live against a real current GIGABYTE laptop.
+    """
+    model = laptop_model_if_vendor(laptop, "GIGABYTE", "gigabyte_laptop_model")
+    if model is None:
+        return None
+
+    provider = GigabyteLaptopProvider(model_name=model, category="bios", name="gigabyte_laptop_bios")
+    ok, latest = safe_get_latest("GIGABYTE Laptop BIOS", provider)
+    if not ok:
+        return None
+    # no comparison against the installed version — GIGABYTE laptop
+    # BIOS versions (e.g. "FB13") are a short alphanumeric build code,
+    # not a dotted number, same situation as Dell/ASRock/Lenovo/HP/MSI
+    return report("GIGABYTE Laptop BIOS", latest, current=None)
+
+
+def check_gigabyte_laptop_audio(devices, board, laptop):
+    """Same as check_gigabyte_laptop_bios, but for the Audio category."""
+    model = laptop_model_if_vendor(laptop, "GIGABYTE", "gigabyte_laptop_model")
+    if model is None:
+        return None
+
+    provider = GigabyteLaptopProvider(
+        model_name=model, category="driver", match_substrings=("Audio",), name="gigabyte_laptop_audio",
+    )
+    ok, latest = safe_get_latest("GIGABYTE Laptop Audio", provider)
+    if not ok:
+        return None
+
+    current = find_device_driver_version(devices, "10EC", ("AUDIO",)) or \
+        find_device_driver_version(devices, "0BDA", ("AUDIO",))
+
+    # confirmed live the version (e.g. "6.0.9679.1") is in the same
+    # dotted format WMI reports, so a direct comparison is meaningful
+    return report("GIGABYTE Laptop Audio", latest, current)
