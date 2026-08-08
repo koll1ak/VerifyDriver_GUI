@@ -9,11 +9,11 @@ hardware.
 
 | Category | Sources |
 |---|---|
-| BIOS | MSI, Gigabyte, ASUS (desktop) · Dell, Acer, ASUS, Lenovo, HP, MSI, Gigabyte, LG, Huawei, Samsung (laptops, manual link for Dell/Huawei/Samsung) · ASRock (desktop, manual link — site now blocked) |
+| BIOS | MSI, Gigabyte, ASUS (desktop) · Dell, Acer, ASUS, Lenovo, HP, MSI, Gigabyte, LG, Huawei, Samsung, Microsoft Surface (laptops, manual link for Dell/Huawei/Samsung/LG/Microsoft Surface) · ASRock (desktop, manual link — site now blocked) |
 | Chipset | AMD, Intel |
 | Integrated GPU | Intel |
 | GPU | NVIDIA, AMD, Intel |
-| Audio | Motherboard vendor's page (MSI/Gigabyte/ASUS) → Microsoft Update Catalog as fallback · Dell, Acer, ASUS, Lenovo, HP, MSI, Gigabyte, LG (laptops) · Samsung (laptops, manual link) · SenaryTech · ASRock (desktop, manual link — site now blocked) |
+| Audio | Motherboard vendor's page (MSI/Gigabyte/ASUS) → Microsoft Update Catalog as fallback · Dell, Acer, ASUS, Lenovo, HP, MSI, Gigabyte, LG (laptops) · Samsung, Microsoft Surface (laptops, manual link) · SenaryTech · ASRock (desktop, manual link — site now blocked) |
 | LAN | Realtek (PCIe + USB), Intel, Acer (Killer/Realtek/Intel) |
 | WiFi | Intel, Realtek, Microsoft Update Catalog (non-Intel chips), ASUS Networking |
 | Bluetooth | Intel, Microsoft Update Catalog (non-Intel chips) |
@@ -70,6 +70,15 @@ stated explicitly in each such provider's docstring
 `providers/hp_support.py`). If you own
 hardware from these vendors, feedback/PRs with real-world data are
 welcome.
+
+Microsoft Surface is a manual-link-only check (`providers/microsoft_surface.py`):
+confirmed live that Surface devices don't expose per-component driver
+downloads at all — everything (BIOS, drivers, firmware) ships as one
+cumulative MSI package per model — so there's nothing to
+version-compare, and the check just resolves the model to its official
+download page from a hardcoded table sourced from Microsoft's own
+documentation. That table will go stale as new Surface models ship and
+needs periodic refreshing.
 
 ## Requirements
 

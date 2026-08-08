@@ -62,6 +62,7 @@ def get_laptop_info() -> dict:
         "acer_model_name": None, "acer_part_number": None, "acer_serial": None,
         "asus_laptop_model": None, "lenovo_serial": None, "hp_model": None,
         "msi_laptop_model": None, "gigabyte_laptop_model": None, "lg_model": None,
+        "microsoft_model": None,
     }
     try:
         result = subprocess.run(
@@ -93,6 +94,7 @@ def get_laptop_info() -> dict:
     is_msi = "MICRO-STAR" in manufacturer.upper() or "MSI" in manufacturer.upper()
     is_gigabyte = "GIGABYTE" in manufacturer.upper()
     is_lg = "LG" in manufacturer.upper()
+    is_microsoft = "MICROSOFT" in manufacturer.upper()
 
     return {
         "manufacturer": manufacturer or None,
@@ -116,6 +118,10 @@ def get_laptop_info() -> dict:
         # serial number to test against, the raw model name is used as
         # a search query (see providers/lg_support.py risk note)
         "lg_model": model if (is_lg and model) else None,
+        # Microsoft Surface devices don't need a search/API resolution
+        # at all — matched directly against a hardcoded model->download
+        # -page table (see providers/microsoft_surface.py)
+        "microsoft_model": model if (is_microsoft and model) else None,
     }
 
 

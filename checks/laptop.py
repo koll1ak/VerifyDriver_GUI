@@ -14,6 +14,7 @@ from providers.msi_bios import get_current_bios_version
 from providers.msi_laptop import MsiLaptopBiosProvider, MsiLaptopDriverProvider
 from providers.gigabyte_laptop import GigabyteLaptopProvider
 from providers.lg_support import LgSupportProvider
+from providers.microsoft_surface import surface_drivers_url
 from providers.asus_bios import AsusBiosProvider
 from providers.asus_laptop_driver import AsusLaptopDriverProvider
 
@@ -554,3 +555,34 @@ def check_lg_audio(devices, board, laptop):
     # for other categories, but this hasn't been confirmed for an
     # actual Audio entry specifically (none was found in live testing)
     return report("LG Audio", latest, current)
+
+
+def check_microsoft_surface_bios(devices, board, laptop):
+    """
+    Microsoft Surface laptops only. Confirmed live (see
+    providers/microsoft_surface.py) that Surface devices don't offer
+    per-component driver downloads at all — everything (BIOS, all
+    drivers, firmware) ships as ONE cumulative MSI package per model,
+    and Microsoft's own guidance recommends Windows Update over the
+    manual download anyway. There's nothing meaningful to
+    version-compare per category, so we just link to the model's
+    official download page.
+    """
+    model = laptop_model_if_vendor(laptop, "MICROSOFT", "microsoft_model")
+    if model is None:
+        return None
+    url = surface_drivers_url(model)
+    if url is None:
+        return None
+    return f"[Microsoft Surface BIOS] all drivers/firmware ship as one bundle — download page: {url}", None
+
+
+def check_microsoft_surface_audio(devices, board, laptop):
+    """Same as check_microsoft_surface_bios, but for the Audio category."""
+    model = laptop_model_if_vendor(laptop, "MICROSOFT", "microsoft_model")
+    if model is None:
+        return None
+    url = surface_drivers_url(model)
+    if url is None:
+        return None
+    return f"[Microsoft Surface Audio] all drivers/firmware ship as one bundle — download page: {url}", None
