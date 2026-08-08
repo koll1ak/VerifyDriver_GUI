@@ -2,7 +2,7 @@ import sys
 
 from net_utils import classify_error
 from scanner import get_devices_by_id_pattern
-from checks.common import find_device, safe_get_latest, report, no_downgrade_match, overall_drivers_page_url
+from checks.common import find_device, find_device_driver_version, safe_get_latest, report, no_downgrade_match, overall_drivers_page_url
 from providers.msi_driver import MsiDriverProvider, get_installed_inf_version
 from providers.gigabyte_driver import GigabyteDriverProvider
 from providers.asrock_driver import AsrockDriverProvider
@@ -162,9 +162,14 @@ def check_audio(devices, board, laptop):
         dict(
             vendor="asus", slug_field="asus_model", label="ASUS Audio Driver",
             provider_factory=lambda model: AsusDriverProvider(
-                model=model, match_substrings=("Realtek", "Audio"), name="asus_audio"
+                model=model, match_substrings=("Realtek",), category="Audio", name="asus_audio"
             ),
-            current_version_getter=None,
+            # confirmed live: the API's version field (e.g. "6.0.8702.1")
+            # is in the same format WMI reports for the installed
+            # driver, unlike the old HTML scraper's page which had no
+            # reliable version-comparable source at all
+            current_version_getter=lambda: find_device_driver_version(devices, "10EC", ("AUDIO",))
+            or find_device_driver_version(devices, "0BDA", ("AUDIO",)),
         ),
     ]
 
