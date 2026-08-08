@@ -185,10 +185,8 @@ def check_bluetooth_via_windows_update(devices, board, laptop):
     current = bt_device.get("DriverVersion")
 
     provider = MsCatalogProvider(query=device_name, name="bluetooth_windows_update")
-    ok, latest = safe_get_latest("Bluetooth ({device_name})", provider)
+    ok, latest = safe_get_latest(f"Bluetooth ({device_name})", provider)
     if not ok:
-        return None
-    if latest is None:
         return None
 
     # searching by the device name string doesn't guarantee an exact
@@ -218,10 +216,8 @@ def check_wifi_via_windows_update(devices, board, laptop):
     current = wifi_device.get("DriverVersion")
 
     provider = MsCatalogProvider(query=device_name, name="wifi_windows_update")
-    ok, latest = safe_get_latest("WiFi (Windows Update)", provider)
+    ok, latest = safe_get_latest(f"WiFi ({device_name})", provider)
     if not ok:
-        return None
-    if latest is None:
         return None
 
     # searching by the device name string doesn't guarantee an exact

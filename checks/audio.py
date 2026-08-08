@@ -2,7 +2,7 @@ import sys
 
 from net_utils import classify_error
 from scanner import get_devices_by_id_pattern
-from checks.common import find_device, safe_get_latest, report, no_downgrade_match
+from checks.common import find_device, safe_get_latest, report, no_downgrade_match, overall_drivers_page_url
 from providers.msi_driver import MsiDriverProvider, get_installed_inf_version
 from providers.gigabyte_driver import GigabyteDriverProvider
 from providers.asrock_driver import AsrockDriverProvider
@@ -55,8 +55,6 @@ def _check_audio_via_windows_update(devices):
     ok, latest = safe_get_latest(f"Audio ({device_name})", provider)
     if not ok:
         return None
-    if latest is None:
-        return None
 
     # searching by the device name string doesn't guarantee an exact
     # match to the right variant — same as with WiFi/Bluetooth via
@@ -71,39 +69,55 @@ def _check_vendor_audio_driver(board, vendor, slug_field, provider_factory, labe
     the slug/model field in board, and (only for MSI) how the installed
     version is obtained for comparison.
 
-    Returns (found, result):
+    Returns (found, result, blocked):
       found — True if the check applies at all and found something on
               the site (regardless of whether there's an update or
               everything is current) — used to decide whether the
               generic Windows Update fallback is still needed;
       result — a (display, update) tuple from report(), or None.
+      blocked — True specifically when the vendor's own page couldn't be
+                reached/parsed at all (network error, blocked, 5xx, ...)
+                — distinct from the page loading fine but simply having
+                no "Audio" category, which isn't a reachability problem
+                and should still fall through to the generic fallback.
     """
     if board.get("vendor") != vendor:
-        return False, None
+        return False, None, False
 
     slug = board.get(slug_field)
     if slug is None:
-        return False, None
+        return False, None, False
 
     provider = provider_factory(slug)
     ok, latest = safe_get_latest(label, provider)
     if not ok:
-        return False, None
+        return False, None, True
     if latest is None:
-        return False, None  # this board's page has no "Audio" category
+        return False, None, False  # this board's page has no "Audio" category
 
     current = current_version_getter() if current_version_getter else None
-    return True, report(label, latest, current)
+    return True, report(label, latest, current), False
 
 
 def check_audio(devices, board, laptop):
     """
     A driver customized for the specific board vendor (MSI/Gigabyte/
     ASRock/ASUS) takes priority — it more accurately reflects what
-    should actually be installed on that specific board. We only check
-    Windows Update as a fallback when no vendor-specific path applies
-    (the board isn't from one of these four vendors) or the vendor's
-    site has nothing under the audio category.
+    should actually be installed on that specific board.
+
+    If the board IS from one of these vendors but its page couldn't be
+    reached at all (blocked/network error), we don't fall back to the
+    Windows Update Catalog search — confirmed live that it's not a
+    reliable source for Realtek audio specifically, since virtually
+    every Realtek codec reports the same generic Windows device name
+    ("Realtek High Definition Audio"), which only ever turns up old
+    versionless catalog entries (see providers/ms_catalog.py). Instead
+    we point at the vendor's overall drivers page for a manual check.
+
+    Windows Update is still tried when no vendor-specific path applies
+    at all (the board isn't from one of these four vendors) or the
+    vendor's site loads fine but simply has nothing under the audio
+    category — neither of those is a reachability problem.
 
     This function should never run on a laptop: Win32_BaseBoard (which
     desktop board vendor detection relies on) often returns garbage on
@@ -155,9 +169,14 @@ def check_audio(devices, board, laptop):
     ]
 
     for cfg in vendor_configs:
-        found, result = _check_vendor_audio_driver(board, **cfg)
+        found, result, blocked = _check_vendor_audio_driver(board, **cfg)
         if found:
             return result
+        if blocked:
+            url = overall_drivers_page_url(board, laptop)
+            if url:
+                return f"[{cfg['label']}] automatic check unavailable — visit the site manually: {url}", None
+            break  # no fallback link available either — fall through below
     return _check_audio_via_windows_update(devices)
 
 
