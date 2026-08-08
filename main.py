@@ -71,7 +71,6 @@ def main():
         for category in CATEGORY_ORDER:
             for line in updates_by_category[category]:
                 print(line)
-        # TODO: hook up a notification (Telegram/toast)
     else:
         print("\nEverything is up to date (where a comparison was possible).")
 
