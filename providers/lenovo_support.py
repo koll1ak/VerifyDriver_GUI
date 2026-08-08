@@ -3,10 +3,12 @@ Provider for BIOS/Audio drivers from the Lenovo site (pcsupport.lenovo.com).
 
 NOT VERIFIED with a real serial number (step 1, getproducts) — the
 author doesn't have a Lenovo laptop on hand. Step 2 (downloads, by
-product slug) HAS been confirmed live against a real public product
-slug (Legion Y540-15IRH-PG0 / 81sy) — that run is what surfaced the two
-fixes below, so unlike Dell this half of the pipeline is now verified
-against actual current site behavior, not just documentation.
+product slug) HAS been confirmed live against several real public
+product slugs across different eras (Legion Y540-15IRH-PG0/81sy,
+ThinkPad X1 Carbon Gen 9/20xw, Legion 5 Pro 16ACH6H/82jq, and others)
+— those runs are what surfaced the fixes below, so unlike Dell this
+half of the pipeline is now verified against actual current site
+behavior across multiple real models, not just documentation.
 
 Two steps, the way the site itself does it (the page is a heavy JS app
 (Angular), there's no content in the source HTML, everything loads via
@@ -56,11 +58,28 @@ Risks — confirmed or still open:
 5. The date isn't embedded in the file name either — it's the item's
    own Date.Unix field (epoch milliseconds), used directly now instead
    of a regex search that could never have matched anything.
+6. CONFIRMED (and fixed) a real bug: the "BIOS/UEFI" category can also
+   contain unrelated utility tools, not just the actual firmware
+   (confirmed live: ThinkPad X1 Carbon Gen 9 lists a "Setup Settings
+   Capture/Playback Utility" there too) — blindly taking the category's
+   first item could return a tool's version instead of the real BIOS
+   version. Now filtered to items whose Title says "BIOS Update".
+7. CONFIRMED (and fixed) a real bug: some models split a category into
+   separate per-OS packages rather than one package covering both
+   (confirmed live: Legion 5 Pro 16ACH6H has DISTINCT Windows 10 and
+   Windows 11 Realtek Audio entries with different versions — 6.0.9088.1
+   vs 6.0.9363.1). Not universal — many models bundle both OSes into one
+   package instead — but real often enough that picking blindly risked
+   the wrong package. Now prefers the item matching the actual installed
+   OS (detect_lenovo_os_name(), same sys.getwindowsversion() pattern as
+   nvidia.py/acer_support.py/asus_laptop_driver.py), falling back to the
+   unfiltered set when nothing matches (e.g. an "OS Independent" entry).
 
 Install: pip install curl_cffi (already required for MSI).
 """
 
 import re
+import sys
 from datetime import datetime, timezone
 
 from curl_cffi import requests
@@ -73,6 +92,26 @@ DOWNLOADS_URL = "https://pcsupport.lenovo.com/{country}/{lang}/api/v4/downloads/
 
 # fallback only — used if a file is ever missing its own Version field
 _VERSION_RE = re.compile(r"\b\d+(?:\.\d+){1,4}\b")
+
+WINDOWS_11_MIN_BUILD = 22000  # the first build Microsoft calls "Windows 11"
+
+
+def detect_lenovo_os_name() -> str:
+    """
+    The exact OperatingSystemKeys string Lenovo uses for the installed
+    Windows version — same sys.getwindowsversion().build pattern as
+    providers/nvidia.py and providers/acer_support.py. Confirmed live
+    (real model: Legion 5 Pro 16ACH6H) that some categories genuinely
+    split into separate per-OS packages (distinct Windows 10 and
+    Windows 11 Realtek Audio entries) — not universal (many models
+    bundle both OSes into one package instead), but real often enough
+    that picking blindly risks the wrong package.
+    """
+    try:
+        build = sys.getwindowsversion().build
+    except AttributeError:
+        return "Windows 10 (64-bit)"  # not Windows — use the default
+    return "Windows 11 (64-bit)" if build >= WINDOWS_11_MIN_BUILD else "Windows 10 (64-bit)"
 
 
 def _format_unix_ms(unix_ms) -> str | None:
@@ -139,11 +178,36 @@ class LenovoSupportProvider(DriverProvider):
         data = resp.json()
 
         items = (data.get("body") or {}).get("DownloadItems") or []
-        for item in items:
-            category_name = ((item.get("Category") or {}).get("Name")) or ""
-            if self.category.upper() not in category_name.upper():
-                continue
+        category_items = [
+            it for it in items
+            if self.category.upper() in (((it.get("Category") or {}).get("Name")) or "").upper()
+        ]
+        if not category_items:
+            return None  # category not found among this model's packages
 
+        if self.category.upper() == "BIOS":
+            # BIOS/UEFI sometimes also lists unrelated utility tools in
+            # the same category (confirmed live: ThinkPad X1 Carbon Gen
+            # 9 lists a "Setup Settings Capture/Playback Utility" there
+            # alongside the real firmware) — the actual firmware entry's
+            # title always says "BIOS Update". Only narrow down when
+            # that filter actually finds something, so a model with
+            # different wording still falls back to the old behavior
+            # instead of returning nothing.
+            bios_only = [it for it in category_items if "BIOS UPDATE" in (it.get("Title") or "").upper()]
+            if bios_only:
+                category_items = bios_only
+
+        # some models split a category into separate per-OS packages
+        # (confirmed live, see detect_lenovo_os_name) — prefer the one
+        # matching the actually installed OS when that happens; same
+        # "only narrow down if it actually matches something" guard
+        target_os = detect_lenovo_os_name()
+        os_matched = [it for it in category_items if target_os in (it.get("OperatingSystemKeys") or [])]
+        if os_matched:
+            category_items = os_matched
+
+        for item in category_items:
             files = item.get("Files") or []
             if not files:
                 continue
@@ -170,4 +234,4 @@ class LenovoSupportProvider(DriverProvider):
                 "page_url": page_url,
             }
 
-        return None  # category not found among this model's packages
+        return None  # no usable Files entry in any matched item
