@@ -66,6 +66,15 @@ class MsCatalogProvider(DriverProvider):
             date_str = cells[4].get_text(strip=True)
             version = cells[5].get_text(strip=True)
 
+            # a lot of older/generic catalog entries (confirmed live:
+            # every "Realtek High Definition Audio" result from
+            # 2016-2017) have no real version at all, just the literal
+            # placeholder text "n/a" in that column — picking one of
+            # these as "best" produced a nonsensical "update to n/a".
+            # Skip them; a versionless entry can never be a valid update.
+            if not version or version.strip().lower() in ("n/a", "-"):
+                continue
+
             date = self._parse_date(date_str)
             if date is None:
                 continue

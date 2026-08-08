@@ -185,6 +185,6 @@ def report(label, latest, current, comparator=None):
     if is_match:
         return f"[{label}] up to date ({latest['version']})", None
 
-    display_url = latest.get("page_url") or latest.get("url", "")
+    display_url = latest.get("page_url") or latest.get("url") or ""
     update_line = f"{label}: installed {current} -> available {latest['version']} ({display_url})"
     return f"[{label}] UPDATE AVAILABLE: {current} -> {latest['version']}", update_line
