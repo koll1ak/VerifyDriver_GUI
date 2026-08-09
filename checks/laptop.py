@@ -120,7 +120,7 @@ def check_acer_bios(devices, board, laptop):
     # that isn't on the site, so we compare via a separate comparator
     return report(
         "Acer BIOS", latest, get_current_bios_version(), comparator=_acer_bios_versions_match,
-        page_url=overall_drivers_page_url(board, laptop),
+        page_url=provider.build_page_url(),
     )
 
 
@@ -164,7 +164,7 @@ def check_acer_audio(devices, board, laptop):
         # we're not sure the version is actually meant for this OS
         return f"[Acer Audio] on the site (different OS in the catalog): {latest['version']} — comparison isn't reliable", None
 
-    return report("Acer Audio", latest, current, page_url=overall_drivers_page_url(board, laptop))
+    return report("Acer Audio", latest, current, page_url=provider.build_page_url())
 
 
 def check_acer_lan(devices, board, laptop):
@@ -220,7 +220,7 @@ def check_acer_lan(devices, board, laptop):
 
     return report(
         "Acer LAN", latest, current, comparator=_acer_lan_versions_match,
-        page_url=overall_drivers_page_url(board, laptop),
+        page_url=provider.build_page_url(),
     )
 
 
@@ -256,18 +256,18 @@ def check_asus_laptop_audio(devices, board, laptop):
         return None
 
     provider = AsusLaptopDriverProvider(model=model, category="Audio", match_substrings=("Realtek",), name="asus_laptop_audio")
+    current = find_device_driver_version(devices, "10EC", ("AUDIO",)) or \
+        find_device_driver_version(devices, "0BDA", ("AUDIO",))
+
     ok, latest = safe_get_latest("ASUS Audio", provider)
     if not ok:
         # request itself failed (network/blocked) — distinct from the
         # page loading fine but simply having no Audio category (handled
         # by the check right below, which stays silent, same as the
         # desktop vendor_configs loop in check_audio)
-        return report("ASUS Audio", None, None, page_url=overall_drivers_page_url(board, laptop))
+        return report("ASUS Audio", None, current, page_url=overall_drivers_page_url(board, laptop))
     if latest is None:
         return None
-
-    current = find_device_driver_version(devices, "10EC", ("AUDIO",)) or \
-        find_device_driver_version(devices, "0BDA", ("AUDIO",))
 
     if current is None:
         try:
@@ -307,13 +307,14 @@ def check_asus_laptop_networking(devices, board, laptop):
     provider = AsusLaptopDriverProvider(
         model=model, category="Networking", match_substrings=(), name="asus_laptop_networking"
     )
+    current = find_device_driver_version(devices, "8086", ("WI-FI",))
+
     ok, latest = safe_get_latest("ASUS Networking", provider)
     if not ok:
-        return report("ASUS Networking", None, None, page_url=overall_drivers_page_url(board, laptop))
+        return report("ASUS Networking", None, current, page_url=overall_drivers_page_url(board, laptop))
     if latest is None:
         return None
 
-    current = find_device_driver_version(devices, "8086", ("WI-FI",))
     return report("ASUS Networking", latest, current, comparator=no_downgrade_match)
 
 

@@ -80,7 +80,7 @@ class AcerSupportProvider(DriverProvider):
         self.serial = serial
         self.name = name
 
-    def _build_page_url(self) -> str:
+    def build_page_url(self) -> str:
         # the full URL also needs a part number and serial number
         # (otherwise the page doesn't exist) — if they weren't passed,
         # we return a shortened version as the closest approximation
@@ -104,7 +104,7 @@ class AcerSupportProvider(DriverProvider):
         session = requests.Session(impersonate="chrome")
         session.headers.update(HEADERS)
 
-        product_page_url = self._build_page_url()
+        product_page_url = self.build_page_url()
         try:
             session.get(product_page_url, timeout=20)
         except Exception:
@@ -161,7 +161,7 @@ class AcerSupportProvider(DriverProvider):
                         "size": latest.get("size"),
                         "description": latest.get("description"),
                         "url": download_url,
-                        "page_url": self._build_page_url(),
+                        "page_url": self.build_page_url(),
                         "os_mismatch": True,  # no separate entry for this OS — the comparison isn't trustworthy
                     }
 
@@ -175,7 +175,7 @@ class AcerSupportProvider(DriverProvider):
         # the product page as a whole, useful as a fallback for a manual check
         file_link = latest.get("link")
         download_url = f"https://www.acer.com/{file_link}" if file_link else None
-        page_url = self._build_page_url()
+        page_url = self.build_page_url()
 
         return {
             "version": latest.get("version"),
