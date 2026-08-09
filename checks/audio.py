@@ -37,6 +37,29 @@ def _find_audio_device(devices):
     return audio_device
 
 
+_AUDIO_CHIP_VENDOR_NAMES = {"10EC": "Realtek", "0BDA": "Realtek"}
+
+
+def _audio_display_name(device):
+    """
+    Windows' generic inbox USB Audio class driver reports a bare class
+    name like "USB Audio 2.0" (confirmed live: Manufacturer field shows
+    "Microsoft", not the actual chip vendor) instead of a vendor-branded
+    one — prefix the known chip vendor (from VendorID) when the name
+    doesn't already mention it, so the table still shows which vendor's
+    chip this actually is. Display only — callers that also use the
+    device name as a search query (e.g. the Windows Update Catalog
+    lookup) must keep using the raw, unprefixed name for that.
+    """
+    if not device:
+        return None
+    name = device.get("DeviceName", "")
+    vendor = _AUDIO_CHIP_VENDOR_NAMES.get(device.get("VendorID"))
+    if vendor and name and vendor.upper() not in name.upper():
+        return f"{vendor} {name}"
+    return name
+
+
 def _check_audio_via_windows_update(audio_device):
     """
     Fallback path for when the board isn't from one of the known vendors
@@ -53,6 +76,9 @@ def _check_audio_via_windows_update(audio_device):
     if audio_device is None:
         return None  # no audio codec in the system — silently skip
 
+    # the raw, unprefixed name — used for the label, the catalog search
+    # query, and the manual-search link, all of which need to match what
+    # Windows/the catalog actually call this device
     device_name = audio_device.get("DeviceName", "")
     current = audio_device.get("DriverVersion")
 
@@ -66,7 +92,7 @@ def _check_audio_via_windows_update(audio_device):
     # Windows Update, we don't suggest a "downgrade"
     return report(
         f"Audio ({device_name})", latest, current, comparator=no_downgrade_match,
-        page_url=catalog_search_url(device_name), device_name=device_name,
+        page_url=catalog_search_url(device_name), device_name=_audio_display_name(audio_device),
         current_date=audio_device.get("DriverDate"),
     )
 
@@ -144,7 +170,7 @@ def check_audio(devices, board, laptop):
         return None
 
     audio_device = _find_audio_device(devices)
-    device_name = audio_device.get("DeviceName") if audio_device else None
+    device_name = _audio_display_name(audio_device)
 
     if board.get("vendor") == "asrock" and board.get("asrock_model"):
         # automatic checking isn't possible: confirmed live that ASRock's
