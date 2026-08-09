@@ -2,7 +2,7 @@ import sys
 
 from net_utils import classify_error
 from checks.common import find_device, safe_get_latest, report, no_downgrade_match
-from providers.amd_chipset import AmdChipsetProvider, get_current_amd_chipset_version
+from providers.amd_chipset import AmdChipsetProvider, get_current_amd_chipset_version, get_current_amd_chipset_date
 from providers.intel_download import IntelDownloadCenterProvider, get_current_intel_chipset_version, intel_download_url
 from providers.intel_chipset_inf_db import IntelChipsetInfDbProvider
 
@@ -41,7 +41,10 @@ def check_amd_chipset(devices, board, laptop):
     ok, latest = safe_get_latest("AMD Chipset", provider, device)
     if not ok:
         latest = None
-    return report("AMD Chipset", latest, get_current_amd_chipset_version(), page_url=page_url)
+    return report(
+        "AMD Chipset", latest, get_current_amd_chipset_version(), page_url=page_url,
+        current_date=get_current_amd_chipset_date(),
+    )
 
 
 def check_intel_chipset(devices, board, laptop):

@@ -92,15 +92,7 @@ class MsiDriverProvider(DriverProvider):
         }
 
 
-def get_installed_inf_version(inf_name_hint: str) -> str | None:
-    """
-    The version of the installed third-party driver from the Driver
-    Store (pnputil), e.g. "rtdusbad_msi.inf" -> "6.4.0.2443". This is
-    NOT the driver version tied to a specific device
-    (Get-CimInstance...DriverVersion may show something different — the
-    version of Windows's active class driver, not the third-party
-    package installed on the system).
-    """
+def _get_installed_inf_line(inf_name_hint: str) -> str | None:
     from ps_utils import run_powershell
 
     ps_command = (
@@ -110,7 +102,38 @@ def get_installed_inf_version(inf_name_hint: str) -> str | None:
     result = run_powershell(ps_command)
     if result.returncode != 0:
         return None
+    return result.stdout
 
+
+def get_installed_inf_version(inf_name_hint: str) -> str | None:
+    """
+    The version of the installed third-party driver from the Driver
+    Store (pnputil), e.g. "rtdusbad_msi.inf" -> "6.4.0.2443". This is
+    NOT the driver version tied to a specific device
+    (Get-CimInstance...DriverVersion may show something different — the
+    version of Windows's active class driver, not the third-party
+    package installed on the system).
+    """
     import re
-    match = re.search(r"Driver version:\s*[\d/]+\s*,?\s*([\d.]+)", result.stdout, re.IGNORECASE)
+
+    stdout = _get_installed_inf_line(inf_name_hint)
+    if stdout is None:
+        return None
+    match = re.search(r"Driver version:\s*[\d/]+\s*,?\s*([\d.]+)", stdout, re.IGNORECASE)
+    return match.group(1) if match else None
+
+
+def get_installed_inf_date(inf_name_hint: str) -> str | None:
+    """
+    The date of the installed third-party driver from the Driver Store
+    (pnputil) — the same "Driver Version:" line as get_installed_inf_version,
+    which pnputil actually formats as "MM/DD/YYYY version" (confirmed
+    live, e.g. "04/16/2026 6.4.0.2443"), so both live in the same match.
+    """
+    import re
+
+    stdout = _get_installed_inf_line(inf_name_hint)
+    if stdout is None:
+        return None
+    match = re.search(r"Driver version:\s*([\d/]+)\s*,?\s*[\d.]+", stdout, re.IGNORECASE)
     return match.group(1) if match else None

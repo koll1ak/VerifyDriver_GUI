@@ -3,10 +3,10 @@ import sys
 from net_utils import classify_error
 from scanner import get_devices_by_id_pattern
 from checks.common import (
-    find_device, find_device_driver_version, safe_get_latest, report, no_downgrade_match, overall_drivers_page_url,
-    manual_check_unavailable,
+    find_device, find_device_driver_version, find_device_by_vendor_and_keywords, safe_get_latest, report,
+    no_downgrade_match, overall_drivers_page_url, manual_check_unavailable,
 )
-from providers.msi_driver import MsiDriverProvider, get_installed_inf_version
+from providers.msi_driver import MsiDriverProvider, get_installed_inf_version, get_installed_inf_date
 from providers.gigabyte_driver import GigabyteDriverProvider
 from providers.asus_driver import AsusDriverProvider
 from providers.senary_audio import SenaryAudioProvider, PAGE_URL as SENARY_PAGE_URL
@@ -98,7 +98,8 @@ def _check_audio_via_windows_update(audio_device):
 
 
 def _check_vendor_audio_driver(
-    board, vendor, slug_field, provider_factory, label, current_version_getter=None, device_name=None,
+    board, vendor, slug_field, provider_factory, label, current_version_getter=None, current_date_getter=None,
+    device_name=None,
 ):
     """
     Shared pattern for vendor-specific desktop-board audio drivers
@@ -133,7 +134,8 @@ def _check_vendor_audio_driver(
         return False, None, False  # this board's page has no "Audio" category
 
     current = current_version_getter() if current_version_getter else None
-    return True, report(label, latest, current, device_name=device_name), False
+    current_date = current_date_getter() if current_date_getter else None
+    return True, report(label, latest, current, device_name=device_name, current_date=current_date), False
 
 
 def check_audio(devices, board, laptop):
@@ -199,6 +201,7 @@ def check_audio(devices, board, laptop):
             # "rtdusbad" is the stable part of the INF name for Realtek
             # USB Audio on MSI boards
             current_version_getter=lambda: get_installed_inf_version("rtdusbad"),
+            current_date_getter=lambda: get_installed_inf_date("rtdusbad"),
         ),
         dict(
             vendor="gigabyte", slug_field="gigabyte_slug", label="Gigabyte Audio Driver",
@@ -210,6 +213,11 @@ def check_audio(devices, board, laptop):
             # driver, so a direct comparison is meaningful
             current_version_getter=lambda: find_device_driver_version(devices, "10EC", ("AUDIO",))
             or find_device_driver_version(devices, "0BDA", ("AUDIO",)),
+            current_date_getter=lambda: (
+                find_device_by_vendor_and_keywords(devices, "10EC", ("AUDIO",))
+                or find_device_by_vendor_and_keywords(devices, "0BDA", ("AUDIO",))
+                or {}
+            ).get("DriverDate"),
         ),
         dict(
             vendor="asus", slug_field="asus_model", label="ASUS Audio Driver",
@@ -222,6 +230,11 @@ def check_audio(devices, board, laptop):
             # reliable version-comparable source at all
             current_version_getter=lambda: find_device_driver_version(devices, "10EC", ("AUDIO",))
             or find_device_driver_version(devices, "0BDA", ("AUDIO",)),
+            current_date_getter=lambda: (
+                find_device_by_vendor_and_keywords(devices, "10EC", ("AUDIO",))
+                or find_device_by_vendor_and_keywords(devices, "0BDA", ("AUDIO",))
+                or {}
+            ).get("DriverDate"),
         ),
     ]
 

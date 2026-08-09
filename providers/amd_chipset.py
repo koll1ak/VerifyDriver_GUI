@@ -41,6 +41,27 @@ def get_current_amd_chipset_version() -> str | None:
     version = result.stdout.strip()
     return version or None
 
+
+# same Uninstall entry as above, but InstallDate (format "YYYYMMDD", set by
+# the installer — not every installer populates it, so this can come back
+# empty even when DisplayVersion is present)
+_GET_INSTALLED_DATE_PS = (
+    "Get-ItemProperty "
+    "'HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*', "
+    "'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' "
+    "-ErrorAction SilentlyContinue | "
+    "Where-Object { $_.DisplayName -like '*AMD Chipset*' } | "
+    "Select-Object -First 1 -ExpandProperty InstallDate"
+)
+
+
+def get_current_amd_chipset_date() -> str | None:
+    """The install date of the installed AMD Chipset Software package (from the Uninstall registry key)."""
+    result = run_powershell(_GET_INSTALLED_DATE_PS)
+    date = result.stdout.strip()
+    return date or None
+
+
 from providers.http_utils import DEFAULT_HEADERS, DEFAULT_TIMEOUT
 
 # without a UA the page sometimes returns a stripped-down response via Akamai

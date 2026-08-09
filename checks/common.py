@@ -22,17 +22,31 @@ class CheckResult(NamedTuple):
     update_line: str | None        # unchanged CLI "Updates available" line
 
 
+# Windows' built-in "null" class drivers (e.g. the generic Bluetooth
+# radio driver, bthusb.inf/bth.inf, used when no vendor-specific driver
+# is installed) hardcode this exact DriverVer date regardless of the
+# actual Windows version — it's not when anything was installed, just a
+# fixed placeholder baked into the inbox INF (widely reported across
+# Windows 7 through 11). Showing "(2006-06-21)" next to a driver version
+# like "10.0.19041.5848" falsely implies the driver itself is 20 years
+# old, so it's treated the same as "no date" rather than displayed.
+_NULL_DRIVER_PLACEHOLDER_DATE = datetime(2006, 6, 21)
+
+
 def _with_date(version, raw_date):
     """
     "6.4.0.2443" + "20220516000000.000000-000"/"2026/07/30"/etc. (any
     format parse_flexible_date already handles) -> "6.4.0.2443
-    (2026-07-30)". Falls back to just the version if there's no date or
-    it doesn't parse — never fails, since a missing/unparseable date is
-    common and shouldn't hide the version itself.
+    (2026-07-30)". Falls back to just the version if there's no date, it
+    doesn't parse, or it's the generic inbox-driver placeholder date —
+    never fails, since a missing/unparseable date is common and
+    shouldn't hide the version itself.
     """
     if not version:
         return "—"
     date = parse_flexible_date(raw_date) if raw_date else None
+    if date == _NULL_DRIVER_PLACEHOLDER_DATE:
+        date = None
     return f"{version} ({date.date()})" if date else version
 
 
@@ -240,6 +254,8 @@ def parse_flexible_date(raw: str):
       "Tue Jul 28, 2026"
     - Intel Download Center's lastModifieddate meta tag (confirmed live):
       "08/04/2026 08:00:00"
+    - pnputil /enum-drivers' "Driver Version:" line (confirmed live):
+      "04/16/2026"
     """
     if not raw:
         return None
@@ -252,7 +268,9 @@ def parse_flexible_date(raw: str):
         except (ValueError, OSError):
             return None
 
-    for fmt in ("%Y/%m/%d", "%Y%m%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", "%a %b %d, %Y", "%m/%d/%Y %H:%M:%S"):
+    for fmt in (
+        "%Y/%m/%d", "%Y%m%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", "%a %b %d, %Y", "%m/%d/%Y %H:%M:%S", "%m/%d/%Y",
+    ):
         try:
             # for the raw WMI format take only the first 8 characters (YYYYMMDD)
             candidate = raw[:8] if fmt == "%Y%m%d" else raw
