@@ -1,4 +1,6 @@
+import ctypes
 import queue
+import sys
 import tkinter as tk
 import tkinter.font as tkfont
 import webbrowser
@@ -11,7 +13,40 @@ from orchestrator import group_pairs_by_category
 from gui import worker
 
 WINDOW_TITLE = "VerifyDriver"
-WINDOW_SIZE = "1000x600"
+# base size at 100% Windows scaling (96 DPI) -- actually applied through
+# App._init_dpi_scaling()'s multiplier, not used as a literal geometry
+# string, so the window (and everything else sized off self._scale) comes
+# out physically the same size on a 4K/150%+ display instead of shrinking
+# to a corner of the screen
+BASE_WINDOW_WIDTH = 1000
+BASE_WINDOW_HEIGHT = 600
+
+# same idea for the Treeview's column widths (see _build_widgets)
+BASE_COLUMN_WIDTHS = {"#0": 280, "current": 170, "available": 170, "status": 220}
+
+
+def _enable_windows_dpi_awareness():
+    """
+    Without this, Windows treats the process as DPI-unaware and bitmap-
+    scales the whole rendered window to match the display's actual scale
+    factor -- the classic blurry/oversized-then-shrunk look old apps get
+    on a 4K screen. Must run before the first Tk window is created (the
+    Win32 API rejects a second call, and it's a no-op once a window
+    already exists) -- called at the very top of App.__init__, before
+    tk.Tk().
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        # PROCESS_PER_MONITOR_DPI_AWARE -- Windows 8.1+; re-queries DPI if
+        # the window is dragged to a monitor with a different scale factor
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except (AttributeError, OSError):
+        try:
+            # Vista/7 fallback -- system-DPI-aware only, but still sharp
+            ctypes.windll.user32.SetProcessDPIAware()
+        except (AttributeError, OSError):
+            pass
 
 
 class _RowInfo(NamedTuple):
@@ -28,9 +63,11 @@ STATUS_LABEL_WIDTH = len("Scanning")
 
 class App:
     def __init__(self):
+        _enable_windows_dpi_awareness()
         self.root = tk.Tk()
         self.root.title(WINDOW_TITLE)
-        self.root.geometry(WINDOW_SIZE)
+        self._scale = self._init_dpi_scaling()
+        self.root.geometry(f"{round(BASE_WINDOW_WIDTH * self._scale)}x{round(BASE_WINDOW_HEIGHT * self._scale)}")
 
         self.result_queue: queue.Queue | None = None
         self._rows: dict[str, _RowInfo] = {}
@@ -41,6 +78,21 @@ class App:
 
     def run(self):
         self.root.mainloop()
+
+    def _init_dpi_scaling(self) -> float:
+        """
+        Tk's own unit system assumes 72 DPI internally, so without this a
+        DPI-aware process (see _enable_windows_dpi_awareness) still draws
+        fonts/widgets at the wrong physical size even though the window
+        itself is no longer bitmap-blurred. Setting "tk scaling" to the
+        display's real DPI/72 fixes point-sized fonts; the returned
+        DPI/96 factor (96 = Windows' 100% baseline) is used separately to
+        scale pixel-literal layout constants (window size, column widths)
+        that were tuned by eye at 100%.
+        """
+        dpi = self.root.winfo_fpixels("1i")
+        self.root.tk.call("tk", "scaling", dpi / 72.0)
+        return dpi / 96.0
 
     # --- widget construction ------------------------------------------
 
@@ -66,10 +118,8 @@ class App:
         self.tree.heading("current", text="Current Driver version")
         self.tree.heading("available", text="Available Driver version")
         self.tree.heading("status", text="Status")
-        self.tree.column("#0", width=280, anchor="w")
-        self.tree.column("current", width=170, anchor="w")
-        self.tree.column("available", width=170, anchor="w")
-        self.tree.column("status", width=220, anchor="w")
+        for col, base_width in BASE_COLUMN_WIDTHS.items():
+            self.tree.column(col, width=round(base_width * self._scale), anchor="w")
 
         scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrollbar.set)
@@ -82,6 +132,13 @@ class App:
         # real family/size from the actual named font instead.
         default_font = tkfont.nametofont("TkDefaultFont")
         family, size = default_font.actual("family"), default_font.actual("size")
+        # the "Treeview" style's row height is a fixed pixel count baked in
+        # by the theme at startup, based on whatever font metrics were
+        # current at that point — recompute it from the actual (now
+        # DPI-scaled) font so rows don't end up too short to fit their own
+        # text on a high-DPI display
+        style = ttk.Style()
+        style.configure("Treeview", rowheight=round(default_font.metrics("linespace") * 1.4))
         self.tree.tag_configure("category", font=(family, size, "bold"))
         self.tree.tag_configure("update", foreground="#c0392b", font=(family, size, "underline"))
         self.tree.tag_configure("linked", foreground="#1a73e8")
