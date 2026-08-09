@@ -256,6 +256,8 @@ def parse_flexible_date(raw: str):
       "08/04/2026 08:00:00"
     - pnputil /enum-drivers' "Driver Version:" line (confirmed live):
       "04/16/2026"
+    - ASUS's GetPDDrivers API INFDate field (confirmed live, ASUS B650
+      board): "07-30-2026" — dash-separated, unlike everything else here
     """
     if not raw:
         return None
@@ -270,6 +272,7 @@ def parse_flexible_date(raw: str):
 
     for fmt in (
         "%Y/%m/%d", "%Y%m%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", "%a %b %d, %Y", "%m/%d/%Y %H:%M:%S", "%m/%d/%Y",
+        "%m-%d-%Y",
     ):
         try:
             # for the raw WMI format take only the first 8 characters (YYYYMMDD)

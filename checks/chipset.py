@@ -2,7 +2,10 @@ import sys
 
 from net_utils import classify_error
 from checks.common import find_device, safe_get_latest, report, no_downgrade_match
-from providers.amd_chipset import AmdChipsetProvider, get_current_amd_chipset_version, get_current_amd_chipset_date
+from providers.amd_chipset import (
+    AmdChipsetProvider, get_current_amd_chipset_version, get_current_amd_chipset_date,
+    get_installed_amd_chipset_release_date,
+)
 from providers.intel_download import IntelDownloadCenterProvider, get_current_intel_chipset_version, intel_download_url
 from providers.intel_chipset_inf_db import IntelChipsetInfDbProvider
 
@@ -41,10 +44,19 @@ def check_amd_chipset(devices, board, laptop):
     ok, latest = safe_get_latest("AMD Chipset", provider, device)
     if not ok:
         latest = None
-    return report(
-        "AMD Chipset", latest, get_current_amd_chipset_version(), page_url=page_url,
-        current_date=get_current_amd_chipset_date(),
-    )
+
+    current_version = get_current_amd_chipset_version()
+    current_date = get_current_amd_chipset_date()
+    if not current_date:
+        # registry doesn't have it (common — AMD's installer often just
+        # doesn't set InstallDate) — try to find the installed version's
+        # own release date on AMD's site instead of showing no date at all
+        try:
+            current_date = get_installed_amd_chipset_release_date(page_url, current_version)
+        except Exception as e:
+            print(f"[AMD Chipset] error looking up installed version's release date: {classify_error(e)}", file=sys.stderr)
+
+    return report("AMD Chipset", latest, current_version, page_url=page_url, current_date=current_date)
 
 
 def check_intel_chipset(devices, board, laptop):

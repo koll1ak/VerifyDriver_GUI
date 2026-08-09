@@ -195,3 +195,49 @@ class AmdChipsetProvider(DriverProvider):
                 if p:
                     return re.sub(r"\s+", " ", p.get_text(strip=True))
         return None
+
+
+def _find_release_date_on_page(page_url: str, driver_name: str, target_version: str) -> str | None:
+    resp = requests.get(page_url, headers=HEADERS, timeout=20)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+
+    for article in soup.select("article.driver-download-details"):
+        h4 = article.find("h4")
+        if not h4 or h4.get_text(strip=True) != driver_name:
+            continue
+        if AmdChipsetProvider._extract_field(article, "Revision Number") == target_version:
+            return AmdChipsetProvider._extract_field(article, "Release Date")
+    return None
+
+
+def get_installed_amd_chipset_release_date(
+    page_url: str, version: str | None, driver_name: str = DRIVER_NAME,
+) -> str | None:
+    """
+    Looks up the currently-installed version's own release date on AMD's
+    site, as a fallback for when the registry's InstallDate is empty
+    (confirmed live: AMD's installer often just doesn't set it). AMD
+    keeps the last handful of releases around: the main page (current
+    release only) plus a "/previous-drivers.html/" archive (same URL
+    shape, same HTML structure, confirmed live on a real board's page —
+    linked from the main page as "Previous Versions") — an exact
+    Revision Number match on either gives a real release date instead of
+    none.
+
+    Best-effort: if the installed version isn't listed on either page
+    (older than what AMD still archives, or an OEM-customized build with
+    a revision number that never appeared on AMD's own generic page at
+    all), returns None -- same as before this existed.
+    """
+    if not version:
+        return None
+    previous_page_url = page_url.replace("/downloads/drivers.html/", "/downloads/previous-drivers.html/")
+    for url in (page_url, previous_page_url):
+        try:
+            date = _find_release_date_on_page(url, driver_name, version)
+        except requests.RequestException:
+            continue
+        if date:
+            return date
+    return None
