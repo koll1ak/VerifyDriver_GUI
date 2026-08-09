@@ -101,16 +101,13 @@ def get_installed_inf_version(inf_name_hint: str) -> str | None:
     version of Windows's active class driver, not the third-party
     package installed on the system).
     """
-    import subprocess
+    from ps_utils import run_powershell
 
     ps_command = (
         "pnputil /enum-drivers | "
         f"Select-String -Pattern '{inf_name_hint}' -Context 0,4"
     )
-    result = subprocess.run(
-        ["powershell", "-NoProfile", "-Command", ps_command],
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
-    )
+    result = run_powershell(ps_command)
     if result.returncode != 0:
         return None
 

@@ -12,12 +12,12 @@ data inside is usually identical, we take the first match.
 """
 
 import re
-import subprocess
 
 import requests
 from bs4 import BeautifulSoup
 
 from providers.base import DriverProvider
+from ps_utils import run_powershell
 
 CHIPSET_PAGE_URL = "https://www.amd.com/en/support/downloads/drivers.html/chipsets/am5/x870.html"
 DRIVER_NAME = "AMD Chipset Drivers"
@@ -37,10 +37,7 @@ _GET_INSTALLED_VERSION_PS = (
 
 def get_current_amd_chipset_version() -> str | None:
     """The version of the installed AMD Chipset Software package (from the Uninstall registry key)."""
-    result = subprocess.run(
-        ["powershell", "-NoProfile", "-Command", _GET_INSTALLED_VERSION_PS],
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
-    )
+    result = run_powershell(_GET_INSTALLED_VERSION_PS)
     version = result.stdout.strip()
     return version or None
 

@@ -65,6 +65,7 @@ def get_current_nvidia_version() -> str | None:
     result = subprocess.run(
         ["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
+        creationflags=subprocess.CREATE_NO_WINDOW,
     )
     if result.returncode != 0:
         return None

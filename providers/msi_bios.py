@@ -26,11 +26,10 @@ obtained separately via:
     Get-CimInstance Win32_BIOS | Select SMBIOSBIOSVersion
 """
 
-import subprocess
-
 from curl_cffi import requests
 
 from providers.base import DriverProvider
+from ps_utils import run_powershell
 
 SUPPORT_PAGE_URL = "https://www.msi.com/Motherboard/{slug}/support"
 API_URL = "https://www.msi.com/api/v1/product/support/panel"
@@ -39,11 +38,7 @@ BIOS_CATEGORY_KEY = "AMI BIOS"
 
 def get_current_bios_version() -> str | None:
     """The BIOS version currently installed on the system (Windows only)."""
-    result = subprocess.run(
-        ["powershell", "-NoProfile", "-Command",
-         "(Get-CimInstance Win32_BIOS).SMBIOSBIOSVersion"],
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
-    )
+    result = run_powershell("(Get-CimInstance Win32_BIOS).SMBIOSBIOSVersion")
     version = result.stdout.strip()
     return version or None
 

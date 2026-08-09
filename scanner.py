@@ -5,7 +5,8 @@ Works only on Windows (uses powershell.exe).
 
 import json
 import re
-import subprocess
+
+from ps_utils import run_powershell
 
 
 PS_COMMAND = (
@@ -52,13 +53,7 @@ def get_installed_devices() -> list[dict]:
         "DeviceID_PCI": "2704",
     }
     """
-    result = subprocess.run(
-        ["powershell", "-NoProfile", "-Command", PS_COMMAND],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
+    result = run_powershell(PS_COMMAND)
 
     if result.returncode != 0:
         raise RuntimeError(f"PowerShell error: {result.stderr}")
@@ -91,13 +86,7 @@ def get_devices_by_id_pattern(instance_id_regex: str) -> list[dict]:
     PowerShell side (e.g. "VID_0BDA").
     """
     ps_command = PS_COMMAND_PNP_FALLBACK.format(pattern=instance_id_regex)
-    result = subprocess.run(
-        ["powershell", "-NoProfile", "-Command", ps_command],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
+    result = run_powershell(ps_command)
 
     if result.returncode != 0:
         raise RuntimeError(f"PowerShell error: {result.stderr}")

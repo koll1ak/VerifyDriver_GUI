@@ -11,9 +11,10 @@ Sources — WMI:
   a unique 7-character identifier for the specific device
 """
 
-import subprocess
 import json
 import re
+
+from ps_utils import run_powershell
 
 # chassis codes that Windows/DMI considers portable
 LAPTOP_CHASSIS_TYPES = {"8", "9", "10", "11", "12", "14", "30", "31", "32"}
@@ -25,10 +26,7 @@ def is_laptop() -> bool | None:
         "(Get-CimInstance Win32_SystemEnclosure).ChassisTypes | ConvertTo-Json"
     )
     try:
-        result = subprocess.run(
-            ["powershell", "-NoProfile", "-Command", ps_command],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-        )
+        result = run_powershell(ps_command)
     except OSError:
         return None  # powershell unavailable (not Windows, restrictions, etc.)
 
@@ -65,10 +63,7 @@ def get_laptop_info() -> dict:
         "microsoft_model": None,
     }
     try:
-        result = subprocess.run(
-            ["powershell", "-NoProfile", "-Command", ps_command],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-        )
+        result = run_powershell(ps_command)
     except OSError:
         return empty
 

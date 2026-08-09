@@ -17,7 +17,8 @@ auto-detection doesn't work, check the extracted values manually via
 """
 
 import re
-import subprocess
+
+from ps_utils import run_powershell
 
 # --- Board vendor detection -------------------------------------------
 
@@ -67,10 +68,7 @@ def get_motherboard_info() -> dict | None:
         "Get-CimInstance Win32_BaseBoard | "
         "Select-Object Manufacturer, Product | ConvertTo-Json"
     )
-    result = subprocess.run(
-        ["powershell", "-NoProfile", "-Command", ps_command],
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
-    )
+    result = run_powershell(ps_command)
     if result.returncode != 0 or not result.stdout.strip():
         return None
 

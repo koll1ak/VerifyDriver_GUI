@@ -13,12 +13,11 @@ Known IDs:
 - 785597  — Intel Arc & Iris Xe Graphics Driver (Windows)
 """
 
-import subprocess
-
 from curl_cffi import requests
 from bs4 import BeautifulSoup
 
 from providers.base import DriverProvider
+from ps_utils import run_powershell
 
 DOWNLOAD_URL_TEMPLATE = "https://www.intel.com/content/www/us/en/download/{download_id}/{slug}.html"
 
@@ -75,9 +74,6 @@ def get_current_intel_chipset_version() -> str | None:
         "Where-Object { $_.DisplayName -like '*Intel*Chipset*' } | "
         "Select-Object -First 1 -ExpandProperty DisplayVersion"
     )
-    result = subprocess.run(
-        ["powershell", "-NoProfile", "-Command", ps_command],
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
-    )
+    result = run_powershell(ps_command)
     version = result.stdout.strip()
     return version or None
