@@ -4,8 +4,8 @@ from providers.realtek_lan import (
 )
 from providers.realtek_wifi import RealtekWifiProvider
 from providers.realtek_usb_lan import RealtekUsbLanProvider
-from providers.intel_download import IntelDownloadCenterProvider
-from providers.ms_catalog import MsCatalogProvider
+from providers.intel_download import IntelDownloadCenterProvider, intel_download_url
+from providers.ms_catalog import MsCatalogProvider, catalog_search_url
 
 INTEL_LAN_DOWNLOAD_ID = "15084"
 INTEL_LAN_SLUG = "intel-ethernet-adapter-complete-driver-pack"
@@ -15,6 +15,13 @@ INTEL_WIFI_SLUG = "intel-wireless-wi-fi-drivers-for-windows-10-and-windows-11"
 
 INTEL_BLUETOOTH_DOWNLOAD_ID = "18649"
 INTEL_BLUETOOTH_SLUG = "intel-wireless-bluetooth-drivers-for-windows-10-and-windows-11"
+
+# fixed category pages on Realtek's own site — used as a manual-check
+# link when the API call itself fails (site down/blocked), same idea as
+# the "unknown variant" date-fallback message below already had
+REALTEK_LAN_PAGE_URL = "https://www.realtek.com/Download/List?cate_id=584"
+REALTEK_WIFI_PAGE_URL = "https://www.realtek.com/Download/List?cate_id=673"
+REALTEK_USB_LAN_PAGE_URL = "https://www.realtek.com/Download/List?cate_id=585"
 
 
 def check_realtek_lan(devices, board, laptop):
@@ -42,7 +49,7 @@ def check_realtek_lan(devices, board, laptop):
     provider = RealtekLanProvider(match_substrings=match_substrings)
     ok, latest = safe_get_latest("Realtek LAN", provider)
     if not ok:
-        return None
+        return report("Realtek LAN", None, current, page_url=REALTEK_LAN_PAGE_URL)
 
     if variant == "unknown":
         # unrecognized format (e.g. older 1GbE chips, where the version
@@ -92,8 +99,8 @@ def check_realtek_wifi(devices, board, laptop):
 
     ok, latest = safe_get_latest("Realtek WiFi", provider)
     if not ok:
-        return None
-    return report("Realtek WiFi", latest, current=None)
+        latest = None
+    return report("Realtek WiFi", latest, current=None, page_url=REALTEK_WIFI_PAGE_URL)
 
 
 def check_realtek_usb_lan(devices, board, laptop):
@@ -109,8 +116,8 @@ def check_realtek_usb_lan(devices, board, laptop):
 
     ok, latest = safe_get_latest("Realtek USB LAN", provider)
     if not ok:
-        return None
-    return report("Realtek USB LAN", latest, current=None)
+        latest = None
+    return report("Realtek USB LAN", latest, current=None, page_url=REALTEK_USB_LAN_PAGE_URL)
 
 
 def check_intel_lan(devices, board, laptop):
@@ -125,11 +132,14 @@ def check_intel_lan(devices, board, laptop):
     )
     ok, latest = safe_get_latest("Intel LAN", provider)
     if not ok:
-        return None
+        latest = None
     # the "Complete Driver Pack" is a single package for all models, its
     # version doesn't always match 1:1 with the version of the specific
     # installed driver
-    return report("Intel LAN", latest, current=None)
+    return report(
+        "Intel LAN", latest, current=None,
+        page_url=intel_download_url(INTEL_LAN_DOWNLOAD_ID, INTEL_LAN_SLUG),
+    )
 
 
 def check_intel_wifi(devices, board, laptop):
@@ -142,12 +152,15 @@ def check_intel_wifi(devices, board, laptop):
     )
     ok, latest = safe_get_latest("Intel WiFi", provider)
     if not ok:
-        return None
+        latest = None
     # the official Intel page is more reliable than a laptop vendor's
     # repackaged version — but we still don't suggest a "downgrade" if
     # the installed version is already newer than what the site shows
     # (happens when the site just hasn't caught up yet)
-    return report("Intel WiFi", latest, current, comparator=no_downgrade_match)
+    return report(
+        "Intel WiFi", latest, current, comparator=no_downgrade_match,
+        page_url=intel_download_url(INTEL_WIFI_DOWNLOAD_ID, INTEL_WIFI_SLUG),
+    )
 
 
 def check_intel_bluetooth(devices, board, laptop):
@@ -163,8 +176,11 @@ def check_intel_bluetooth(devices, board, laptop):
     )
     ok, latest = safe_get_latest("Intel Bluetooth", provider)
     if not ok:
-        return None
-    return report("Intel Bluetooth", latest, current, comparator=no_downgrade_match)
+        latest = None
+    return report(
+        "Intel Bluetooth", latest, current, comparator=no_downgrade_match,
+        page_url=intel_download_url(INTEL_BLUETOOTH_DOWNLOAD_ID, INTEL_BLUETOOTH_SLUG),
+    )
 
 
 def check_bluetooth_via_windows_update(devices, board, laptop):
@@ -187,12 +203,15 @@ def check_bluetooth_via_windows_update(devices, board, laptop):
     provider = MsCatalogProvider(query=device_name, name="bluetooth_windows_update")
     ok, latest = safe_get_latest(f"Bluetooth ({device_name})", provider)
     if not ok:
-        return None
+        latest = None
 
     # searching by the device name string doesn't guarantee an exact
     # match to the right variant (see the MediaTek WiFi story above) —
     # we don't suggest a "downgrade"
-    return report(f"Bluetooth ({device_name})", latest, current, comparator=no_downgrade_match)
+    return report(
+        f"Bluetooth ({device_name})", latest, current, comparator=no_downgrade_match,
+        page_url=catalog_search_url(device_name),
+    )
 
 
 def check_wifi_via_windows_update(devices, board, laptop):
@@ -218,9 +237,12 @@ def check_wifi_via_windows_update(devices, board, laptop):
     provider = MsCatalogProvider(query=device_name, name="wifi_windows_update")
     ok, latest = safe_get_latest(f"WiFi ({device_name})", provider)
     if not ok:
-        return None
+        latest = None
 
     # searching by the device name string doesn't guarantee an exact
     # match to the right variant — same as with OEM pages, we don't
     # suggest a "downgrade"
-    return report(f"WiFi ({device_name})", latest, current, comparator=no_downgrade_match)
+    return report(
+        f"WiFi ({device_name})", latest, current, comparator=no_downgrade_match,
+        page_url=catalog_search_url(device_name),
+    )

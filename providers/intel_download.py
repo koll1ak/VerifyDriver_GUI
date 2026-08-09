@@ -23,6 +23,10 @@ from providers.base import DriverProvider
 DOWNLOAD_URL_TEMPLATE = "https://www.intel.com/content/www/us/en/download/{download_id}/{slug}.html"
 
 
+def intel_download_url(download_id: str, slug: str) -> str:
+    return DOWNLOAD_URL_TEMPLATE.format(download_id=download_id, slug=slug)
+
+
 def _find_meta(soup, name: str) -> str | None:
     tag = soup.find("meta", attrs={"name": name})
     if tag is None:

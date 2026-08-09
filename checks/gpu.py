@@ -1,7 +1,13 @@
 from checks.common import find_device, find_device_driver_version, safe_get_latest, report
 from providers.nvidia import NvidiaProvider, get_current_nvidia_version
 from providers.amd_gpu import AmdGpuProvider
-from providers.intel_download import IntelDownloadCenterProvider
+from providers.intel_download import IntelDownloadCenterProvider, intel_download_url
+
+# NVIDIA has no per-GPU static page usable as a provider source (see
+# providers/nvidia.py — it goes through an AJAX API instead), but its
+# generic driver-search landing page is a long-stable, well-known public
+# URL — fine to use as a manual-check link when the API call fails.
+NVIDIA_DRIVERS_PAGE_URL = "https://www.nvidia.com/Download/index.aspx"
 
 # AMD Software: Adrenalin Edition — the exact same driver version is
 # shown on ANY AMD product page (discrete cards and CPU-integrated APU
@@ -26,8 +32,8 @@ def check_nvidia(devices, board, laptop):
 
     ok, latest = safe_get_latest("NVIDIA", provider, device)
     if not ok:
-        return None
-    return report("NVIDIA", latest, get_current_nvidia_version())
+        latest = None
+    return report("NVIDIA", latest, get_current_nvidia_version(), page_url=NVIDIA_DRIVERS_PAGE_URL)
 
 
 def check_amd_gpu(devices, board, laptop):
@@ -49,7 +55,7 @@ def check_amd_gpu(devices, board, laptop):
     provider = AmdGpuProvider(page_url=AMD_GPU_PAGE_URL)
     ok, latest = safe_get_latest("AMD GPU", provider, amd_gpu_device)
     if not ok:
-        return None
+        latest = None
     # AmdGpuProvider explicitly sets a comparable_with_windows_version
     # flag telling us whether the comparison can be trusted (see
     # providers/amd_gpu.py) — if the site's version could be converted
@@ -57,7 +63,7 @@ def check_amd_gpu(devices, board, laptop):
     # sees), we compare directly; if not, the version stayed the
     # marketing one ("26.7.1"), and comparing against it isn't safe
     current = amd_gpu_device.get("DriverVersion") if latest and latest.get("comparable_with_windows_version") else None
-    return report("AMD GPU", latest, current)
+    return report("AMD GPU", latest, current, page_url=AMD_GPU_PAGE_URL)
 
 
 def check_intel_gpu(devices, board, laptop):
@@ -77,6 +83,9 @@ def check_intel_gpu(devices, board, laptop):
     )
     ok, latest = safe_get_latest("Intel GPU", provider)
     if not ok:
-        return None
+        latest = None
     # for Intel, the Windows version usually matches the marketing version directly
-    return report("Intel GPU", latest, current)
+    return report(
+        "Intel GPU", latest, current,
+        page_url=intel_download_url(INTEL_GPU_DOWNLOAD_ID, INTEL_GPU_SLUG),
+    )

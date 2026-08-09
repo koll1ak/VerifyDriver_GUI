@@ -3,7 +3,7 @@ import sys
 from net_utils import classify_error
 from checks.common import find_device, safe_get_latest, report, no_downgrade_match
 from providers.amd_chipset import AmdChipsetProvider, get_current_amd_chipset_version
-from providers.intel_download import IntelDownloadCenterProvider, get_current_intel_chipset_version
+from providers.intel_download import IntelDownloadCenterProvider, get_current_intel_chipset_version, intel_download_url
 from providers.intel_chipset_inf_db import IntelChipsetInfDbProvider
 
 INTEL_CHIPSET_DOWNLOAD_ID = "19347"
@@ -40,8 +40,8 @@ def check_amd_chipset(devices, board, laptop):
 
     ok, latest = safe_get_latest("AMD Chipset", provider, device)
     if not ok:
-        return None
-    return report("AMD Chipset", latest, get_current_amd_chipset_version())
+        latest = None
+    return report("AMD Chipset", latest, get_current_amd_chipset_version(), page_url=page_url)
 
 
 def check_intel_chipset(devices, board, laptop):
@@ -96,7 +96,7 @@ def check_intel_chipset(devices, board, laptop):
     )
     ok, latest = safe_get_latest("Intel Chipset", provider)
     if not ok:
-        return None
+        latest = None
 
     # IMPORTANT: there was originally an attempt here to fall back to the
     # PnP driver version of the SMBus controller when the registry was
@@ -108,4 +108,7 @@ def check_intel_chipset(devices, board, laptop):
     # available"). So we only use the registry — if it's empty, we
     # honestly show "couldn't compare" instead of guessing.
     current = get_current_intel_chipset_version()
-    return report("Intel Chipset", latest, current)
+    return report(
+        "Intel Chipset", latest, current,
+        page_url=intel_download_url(INTEL_CHIPSET_DOWNLOAD_ID, INTEL_CHIPSET_SLUG),
+    )

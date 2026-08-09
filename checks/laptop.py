@@ -4,6 +4,7 @@ from net_utils import classify_error
 from scanner import get_devices_by_id_pattern
 from checks.common import (
     find_device, find_device_driver_version, laptop_model_if_vendor, safe_get_latest, report, no_downgrade_match,
+    overall_drivers_page_url,
 )
 from providers.dell_support import dell_drivers_url
 from providers.acer_support import AcerSupportProvider
@@ -11,7 +12,7 @@ from providers.huawei_support import huawei_search_url
 from providers.lenovo_support import LenovoSupportProvider
 from providers.hp_support import HpSupportProvider
 from providers.msi_bios import get_current_bios_version
-from providers.msi_laptop import MsiLaptopBiosProvider, MsiLaptopDriverProvider
+from providers.msi_laptop import MsiLaptopBiosProvider, MsiLaptopDriverProvider, GENERIC_SUPPORT_PAGE_URL as MSI_LAPTOP_SUPPORT_URL
 from providers.gigabyte_laptop import GigabyteLaptopProvider
 from providers.lg_support import LgSupportProvider
 from providers.microsoft_surface import surface_drivers_url
@@ -113,11 +114,14 @@ def check_acer_bios(devices, board, laptop):
     )
     ok, latest = safe_get_latest("Acer BIOS", provider)
     if not ok:
-        return None
+        latest = None
     # Acer's BIOS version is in a plain format ("2.06"), not tied to the
     # board model (unlike MSI) — but Windows adds a "V" prefix (V2.06)
     # that isn't on the site, so we compare via a separate comparator
-    return report("Acer BIOS", latest, get_current_bios_version(), comparator=_acer_bios_versions_match)
+    return report(
+        "Acer BIOS", latest, get_current_bios_version(), comparator=_acer_bios_versions_match,
+        page_url=overall_drivers_page_url(board, laptop),
+    )
 
 
 def check_acer_audio(devices, board, laptop):
@@ -133,7 +137,7 @@ def check_acer_audio(devices, board, laptop):
     )
     ok, latest = safe_get_latest("Acer Audio", provider)
     if not ok:
-        return None
+        latest = None
     # try to compare against the installed version — if a proper Realtek
     # branded driver is actually installed (not the generic Windows
     # driver), the versions might match directly (a format like
@@ -160,7 +164,7 @@ def check_acer_audio(devices, board, laptop):
         # we're not sure the version is actually meant for this OS
         return f"[Acer Audio] on the site (different OS in the catalog): {latest['version']} — comparison isn't reliable", None
 
-    return report("Acer Audio", latest, current)
+    return report("Acer Audio", latest, current, page_url=overall_drivers_page_url(board, laptop))
 
 
 def check_acer_lan(devices, board, laptop):
@@ -189,7 +193,7 @@ def check_acer_lan(devices, board, laptop):
     )
     ok, latest = safe_get_latest("Acer LAN", provider)
     if not ok:
-        return None
+        latest = None
 
     # look for a network adapter — Killer/Realtek/Intel, on Acer it's
     # most often Killer (sometimes actually a rebranded Realtek chip
@@ -214,7 +218,10 @@ def check_acer_lan(devices, board, laptop):
     if latest and latest.get("os_mismatch"):
         return f"[Acer LAN] on the site (different OS in the catalog): {latest['version']} — comparison isn't reliable", None
 
-    return report("Acer LAN", latest, current, comparator=_acer_lan_versions_match)
+    return report(
+        "Acer LAN", latest, current, comparator=_acer_lan_versions_match,
+        page_url=overall_drivers_page_url(board, laptop),
+    )
 
 
 def check_asus_laptop_bios(devices, board, laptop):
@@ -229,11 +236,14 @@ def check_asus_laptop_bios(devices, board, laptop):
 
     ok, latest = safe_get_latest("ASUS BIOS", AsusBiosProvider(model=model))
     if not ok:
-        return None
+        latest = None
     # try comparing directly — the ASUS format hasn't been verified; if
     # it doesn't match, we'll sort it out from real data (as with
     # Acer/MSI earlier)
-    return report("ASUS BIOS", latest, get_current_bios_version(), comparator=_asus_laptop_bios_versions_match)
+    return report(
+        "ASUS BIOS", latest, get_current_bios_version(), comparator=_asus_laptop_bios_versions_match,
+        page_url=overall_drivers_page_url(board, laptop),
+    )
 
 
 def check_asus_laptop_audio(devices, board, laptop):
@@ -248,7 +258,11 @@ def check_asus_laptop_audio(devices, board, laptop):
     provider = AsusLaptopDriverProvider(model=model, category="Audio", match_substrings=("Realtek",), name="asus_laptop_audio")
     ok, latest = safe_get_latest("ASUS Audio", provider)
     if not ok:
-        return None
+        # request itself failed (network/blocked) — distinct from the
+        # page loading fine but simply having no Audio category (handled
+        # by the check right below, which stays silent, same as the
+        # desktop vendor_configs loop in check_audio)
+        return report("ASUS Audio", None, None, page_url=overall_drivers_page_url(board, laptop))
     if latest is None:
         return None
 
@@ -295,7 +309,7 @@ def check_asus_laptop_networking(devices, board, laptop):
     )
     ok, latest = safe_get_latest("ASUS Networking", provider)
     if not ok:
-        return None
+        return report("ASUS Networking", None, None, page_url=overall_drivers_page_url(board, laptop))
     if latest is None:
         return None
 
@@ -427,12 +441,15 @@ def check_msi_laptop_bios(devices, board, laptop):
     provider = MsiLaptopBiosProvider(model_slug=model)
     ok, latest = safe_get_latest("MSI Laptop BIOS", provider)
     if not ok:
-        return None
+        latest = None
     # no comparison against the installed version — MSI laptop BIOS
     # versions (e.g. "E1585IMS.11C") don't match the desktop
     # comparator's "tail after 'v'" format, and no real device is
-    # available to confirm what Windows actually reports here
-    return report("MSI Laptop BIOS", latest, current=None)
+    # available to confirm what Windows actually reports here.
+    # page_url points at MSI's generic support search, not a per-model
+    # page — that page is the one this provider itself resolves the
+    # model through, so it's the best fixed fallback available
+    return report("MSI Laptop BIOS", latest, current=None, page_url=MSI_LAPTOP_SUPPORT_URL)
 
 
 def check_msi_laptop_audio(devices, board, laptop):
@@ -446,14 +463,14 @@ def check_msi_laptop_audio(devices, board, laptop):
     provider = MsiLaptopDriverProvider(model_slug=model, category_keyword="AUDIO", name="msi_laptop_audio")
     ok, latest = safe_get_latest("MSI Laptop Audio", provider)
     if not ok:
-        return None
+        latest = None
 
     current = find_device_driver_version(devices, "10EC", ("AUDIO",)) or \
         find_device_driver_version(devices, "0BDA", ("AUDIO",))
 
     # confirmed live the version (e.g. "6.0.9597.1") is in the same
     # dotted format WMI reports, so a direct comparison is meaningful
-    return report("MSI Laptop Audio", latest, current)
+    return report("MSI Laptop Audio", latest, current, page_url=MSI_LAPTOP_SUPPORT_URL)
 
 
 def check_gigabyte_laptop_bios(devices, board, laptop):

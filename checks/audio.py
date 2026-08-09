@@ -6,8 +6,8 @@ from checks.common import find_device, find_device_driver_version, safe_get_late
 from providers.msi_driver import MsiDriverProvider, get_installed_inf_version
 from providers.gigabyte_driver import GigabyteDriverProvider
 from providers.asus_driver import AsusDriverProvider
-from providers.senary_audio import SenaryAudioProvider
-from providers.ms_catalog import MsCatalogProvider
+from providers.senary_audio import SenaryAudioProvider, PAGE_URL as SENARY_PAGE_URL
+from providers.ms_catalog import MsCatalogProvider, catalog_search_url
 
 
 def _find_audio_device(devices):
@@ -53,12 +53,15 @@ def _check_audio_via_windows_update(devices):
     provider = MsCatalogProvider(query=device_name, name="audio_windows_update")
     ok, latest = safe_get_latest(f"Audio ({device_name})", provider)
     if not ok:
-        return None
+        latest = None
 
     # searching by the device name string doesn't guarantee an exact
     # match to the right variant — same as with WiFi/Bluetooth via
     # Windows Update, we don't suggest a "downgrade"
-    return report(f"Audio ({device_name})", latest, current, comparator=no_downgrade_match)
+    return report(
+        f"Audio ({device_name})", latest, current, comparator=no_downgrade_match,
+        page_url=catalog_search_url(device_name),
+    )
 
 
 def _check_vendor_audio_driver(board, vendor, slug_field, provider_factory, label, current_version_getter=None):
@@ -221,8 +224,8 @@ def check_senary_audio(devices, board, laptop):
     provider = SenaryAudioProvider()
     ok, latest = safe_get_latest("Senary Audio", provider)
     if not ok:
-        return None
+        latest = None
     # the OEM (e.g. Huawei) repackages the driver under its own version
     # number, different from what's on the SenaryTech site — comparison
     # isn't reliable
-    return report("Senary Audio", latest, current=None)
+    return report("Senary Audio", latest, current=None, page_url=SENARY_PAGE_URL)

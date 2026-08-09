@@ -21,6 +21,11 @@ from providers.http_utils import DEFAULT_HEADERS
 SEARCH_URL = "https://www.catalog.update.microsoft.com/Search.aspx"
 
 
+def catalog_search_url(query: str) -> str:
+    from urllib.parse import quote
+    return f"{SEARCH_URL}?q={quote(query)}"
+
+
 class MsCatalogProvider(DriverProvider):
     """
     query: the search query — usually the exact device name from Windows

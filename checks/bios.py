@@ -55,8 +55,11 @@ def check_bios(devices, board, laptop):
             latest = MsiBiosProvider(product_slug=slug).get_latest()
         except Exception as e:
             print(f"[BIOS] error (MSI): {classify_error(e)}", file=sys.stderr)
-            return None
-        return report("BIOS", latest, get_current_bios_version(), comparator=_bios_versions_match)
+            latest = None
+        return report(
+            "BIOS", latest, get_current_bios_version(), comparator=_bios_versions_match,
+            page_url=overall_drivers_page_url(board, laptop),
+        )
 
     if vendor == "gigabyte":
         slug = board.get("gigabyte_slug")
@@ -67,11 +70,11 @@ def check_bios(devices, board, laptop):
             latest = GigabyteBiosProvider(product_slug=slug).get_latest()
         except Exception as e:
             print(f"[BIOS] error (Gigabyte): {classify_error(e)}", file=sys.stderr)
-            return None
+            latest = None
         # no reliable way yet to compare against the installed version
         # (Windows doesn't give a single BIOS code in a predictable
         # format for Gigabyte)
-        return report("BIOS", latest, current=None)
+        return report("BIOS", latest, current=None, page_url=overall_drivers_page_url(board, laptop))
 
     if vendor == "asrock":
         model = board.get("asrock_model")
@@ -99,8 +102,11 @@ def check_bios(devices, board, laptop):
             latest = AsusBiosProvider(model=model).get_latest()
         except Exception as e:
             print(f"[BIOS] error (ASUS): {classify_error(e)}", file=sys.stderr)
-            return None
-        return report("BIOS", latest, get_current_bios_version(), comparator=_asus_desktop_bios_versions_match)
+            latest = None
+        return report(
+            "BIOS", latest, get_current_bios_version(), comparator=_asus_desktop_bios_versions_match,
+            page_url=overall_drivers_page_url(board, laptop),
+        )
 
     print(f"[BIOS] board vendor not recognized (manufacturer: {board.get('manufacturer_raw')})", file=sys.stderr)
     return None

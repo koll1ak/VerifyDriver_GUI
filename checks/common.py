@@ -165,7 +165,7 @@ def parse_flexible_date(raw: str):
     return None
 
 
-def report(label, latest, current, comparator=None):
+def report(label, latest, current, comparator=None, page_url=None):
     """
     Shared comparison logic. Returns (display_line, update_line):
     display_line — a status line for the overall report (always
@@ -173,8 +173,17 @@ def report(label, latest, current, comparator=None):
     (or None if no update was found/comparison wasn't possible). Doesn't
     print by itself — printing happens in main() after all the parallel
     checks finish, in a fixed order by category.
+
+    page_url — when the site was reachable but no version could be
+    extracted from it (e.g. a bot-protection challenge page served
+    instead of the real content), a known fixed URL for the download
+    page lets us point the user at it for a manual check instead of
+    just saying "couldn't find a version".
     """
     if latest is None:
+        if page_url:
+            suffix = f" (installed {current})" if current is not None else ""
+            return f"[{label}] automatic check unavailable{suffix} — visit the site manually: {page_url}", None
         if current is not None:
             return f"[{label}] installed {current} (couldn't find a version to compare against on the site)", None
         return f"[{label}] could not find a version on the site to compare against", None
