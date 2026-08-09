@@ -1,4 +1,7 @@
-from checks.common import find_device, find_device_driver_version, safe_get_latest, report, parse_flexible_date, no_downgrade_match
+from checks.common import (
+    find_device, find_device_by_vendor_and_keywords, safe_get_latest, report, parse_flexible_date,
+    no_downgrade_match, build_result,
+)
 from providers.realtek_lan import (
     RealtekLanProvider, realtek_versions_match, realtek_ndis_versions_match, detect_realtek_lan_variant,
 )
@@ -49,7 +52,10 @@ def check_realtek_lan(devices, board, laptop):
     provider = RealtekLanProvider(match_substrings=match_substrings)
     ok, latest = safe_get_latest("Realtek LAN", provider)
     if not ok:
-        return report("Realtek LAN", None, current, page_url=REALTEK_LAN_PAGE_URL)
+        return report(
+            "Realtek LAN", None, current, page_url=REALTEK_LAN_PAGE_URL, device_name=device.get("DeviceName"),
+            current_date=device.get("DriverDate"),
+        )
 
     if variant == "unknown":
         # unrecognized format (e.g. older 1GbE chips, where the version
@@ -77,11 +83,32 @@ def check_realtek_lan(devices, board, laptop):
                     f"the whole LAN category on the site: https://www.realtek.com/Download/List?cate_id=584 "
                     f"(the auto-picked file may not be right for this specific chip — pick manually)"
                 )
-                return display, update_line
-            return f"[Realtek LAN] up to date by date (installed driver from {installed_date.date()})", None
+                return build_result(
+                    "Realtek LAN", display, update_line,
+                    # the real version numbers aren't comparable for this
+                    # chip (that's the whole reason we fell back to
+                    # comparing by date) but they're still worth showing
+                    # alongside the date, rather than just the bare date
+                    # with no version number at all
+                    current=current, available=latest["version"],
+                    current_date=device.get("DriverDate"), available_date=latest.get("date"),
+                    status="Possibly outdated (by date)",
+                    url="https://www.realtek.com/Download/List?cate_id=584",
+                    device_name=device.get("DeviceName"),
+                )
+            display_line = f"[Realtek LAN] up to date by date (installed driver from {installed_date.date()})"
+            return build_result(
+                "Realtek LAN", display_line, current=current, available=latest["version"],
+                current_date=device.get("DriverDate"), available_date=latest.get("date"),
+                status="Up to date (by date)",
+                url=REALTEK_LAN_PAGE_URL, device_name=device.get("DeviceName"),
+            )
         current = None  # couldn't compare by either version or date
 
-    return report("Realtek LAN", latest, current, comparator=comparator)
+    return report(
+        "Realtek LAN", latest, current, comparator=comparator, device_name=device.get("DeviceName"),
+        current_date=device.get("DriverDate"),
+    )
 
 
 def check_realtek_wifi(devices, board, laptop):
@@ -100,7 +127,9 @@ def check_realtek_wifi(devices, board, laptop):
     ok, latest = safe_get_latest("Realtek WiFi", provider)
     if not ok:
         latest = None
-    return report("Realtek WiFi", latest, current=None, page_url=REALTEK_WIFI_PAGE_URL)
+    return report(
+        "Realtek WiFi", latest, current=None, page_url=REALTEK_WIFI_PAGE_URL, device_name=device.get("DeviceName"),
+    )
 
 
 def check_realtek_usb_lan(devices, board, laptop):
@@ -117,14 +146,17 @@ def check_realtek_usb_lan(devices, board, laptop):
     ok, latest = safe_get_latest("Realtek USB LAN", provider)
     if not ok:
         latest = None
-    return report("Realtek USB LAN", latest, current=None, page_url=REALTEK_USB_LAN_PAGE_URL)
+    return report(
+        "Realtek USB LAN", latest, current=None, page_url=REALTEK_USB_LAN_PAGE_URL,
+        device_name=device.get("DeviceName"),
+    )
 
 
 def check_intel_lan(devices, board, laptop):
-    current = find_device_driver_version(
-        devices, "8086", ("ETHERNET", "I219", "I225", "I226", "I210", "I350")
+    device = find_device_by_vendor_and_keywords(
+        devices, "8086", ("ETHERNET", "I219", "I225", "I226", "I210", "I350"),
     )
-    if current is None:
+    if device is None:
         return None  # no Intel network card in the system — silently skip
 
     provider = IntelDownloadCenterProvider(
@@ -139,13 +171,15 @@ def check_intel_lan(devices, board, laptop):
     return report(
         "Intel LAN", latest, current=None,
         page_url=intel_download_url(INTEL_LAN_DOWNLOAD_ID, INTEL_LAN_SLUG),
+        device_name=device.get("DeviceName"),
     )
 
 
 def check_intel_wifi(devices, board, laptop):
-    current = find_device_driver_version(devices, "8086", ("WI-FI", "WIRELESS"))
-    if current is None:
+    device = find_device_by_vendor_and_keywords(devices, "8086", ("WI-FI", "WIRELESS"))
+    if device is None:
         return None  # no Intel WiFi card in the system — silently skip
+    current = device.get("DriverVersion")
 
     provider = IntelDownloadCenterProvider(
         download_id=INTEL_WIFI_DOWNLOAD_ID, slug=INTEL_WIFI_SLUG, name="intel_wifi"
@@ -160,6 +194,7 @@ def check_intel_wifi(devices, board, laptop):
     return report(
         "Intel WiFi", latest, current, comparator=no_downgrade_match,
         page_url=intel_download_url(INTEL_WIFI_DOWNLOAD_ID, INTEL_WIFI_SLUG),
+        device_name=device.get("DeviceName"), current_date=device.get("DriverDate"),
     )
 
 
@@ -167,9 +202,10 @@ def check_intel_bluetooth(devices, board, laptop):
     # IMPORTANT: Intel Bluetooth devices in Windows are listed under a
     # DIFFERENT PCI/USB Vendor ID — 8087, not 8086 (which is used for
     # WiFi/chipset/GPU) — confirmed on a real device.
-    current = find_device_driver_version(devices, "8087", ("BLUETOOTH",))
-    if current is None:
+    device = find_device_by_vendor_and_keywords(devices, "8087", ("BLUETOOTH",))
+    if device is None:
         return None  # no Intel Bluetooth module in the system — silently skip
+    current = device.get("DriverVersion")
 
     provider = IntelDownloadCenterProvider(
         download_id=INTEL_BLUETOOTH_DOWNLOAD_ID, slug=INTEL_BLUETOOTH_SLUG, name="intel_bluetooth"
@@ -180,6 +216,7 @@ def check_intel_bluetooth(devices, board, laptop):
     return report(
         "Intel Bluetooth", latest, current, comparator=no_downgrade_match,
         page_url=intel_download_url(INTEL_BLUETOOTH_DOWNLOAD_ID, INTEL_BLUETOOTH_SLUG),
+        device_name=device.get("DeviceName"), current_date=device.get("DriverDate"),
     )
 
 
@@ -210,7 +247,7 @@ def check_bluetooth_via_windows_update(devices, board, laptop):
     # we don't suggest a "downgrade"
     return report(
         f"Bluetooth ({device_name})", latest, current, comparator=no_downgrade_match,
-        page_url=catalog_search_url(device_name),
+        page_url=catalog_search_url(device_name), device_name=device_name, current_date=bt_device.get("DriverDate"),
     )
 
 
@@ -244,5 +281,5 @@ def check_wifi_via_windows_update(devices, board, laptop):
     # suggest a "downgrade"
     return report(
         f"WiFi ({device_name})", latest, current, comparator=no_downgrade_match,
-        page_url=catalog_search_url(device_name),
+        page_url=catalog_search_url(device_name), device_name=device_name, current_date=wifi_device.get("DriverDate"),
     )

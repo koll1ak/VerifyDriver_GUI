@@ -1,4 +1,4 @@
-from checks.common import find_device, find_device_driver_version, safe_get_latest, report
+from checks.common import find_device, find_device_by_vendor_and_keywords, safe_get_latest, report
 from providers.nvidia import NvidiaProvider, get_current_nvidia_version
 from providers.amd_gpu import AmdGpuProvider
 from providers.intel_download import IntelDownloadCenterProvider, intel_download_url
@@ -24,6 +24,18 @@ INTEL_GPU_DOWNLOAD_ID = "785597"
 INTEL_GPU_SLUG = "intel-arc-graphics-windows"
 
 
+def _is_integrated_amd_gpu(device_name: str) -> bool:
+    """
+    AMD's naming convention reliably distinguishes the two: every Ryzen
+    CPU's integrated graphics reports as a bare "AMD Radeon(TM) Graphics"
+    or "AMD Radeon(TM) Vega 8 Graphics" — always ending in the plain word
+    "Graphics" — while every discrete Radeon card has a specific model
+    suffix instead ("... RX 7900 XTX", "... Pro W7900", "... VII"), never
+    ending in just "Graphics".
+    """
+    return device_name.strip().upper().endswith("GRAPHICS")
+
+
 def check_nvidia(devices, board, laptop):
     provider = NvidiaProvider()
     device = find_device(devices, provider)
@@ -33,7 +45,10 @@ def check_nvidia(devices, board, laptop):
     ok, latest = safe_get_latest("NVIDIA", provider, device)
     if not ok:
         latest = None
-    return report("NVIDIA", latest, get_current_nvidia_version(), page_url=NVIDIA_DRIVERS_PAGE_URL)
+    return report(
+        "NVIDIA", latest, get_current_nvidia_version(), page_url=NVIDIA_DRIVERS_PAGE_URL,
+        device_name=device.get("DeviceName"), current_date=device.get("DriverDate"),
+    )
 
 
 def check_amd_gpu(devices, board, laptop):
@@ -43,12 +58,7 @@ def check_amd_gpu(devices, board, laptop):
     # IMPORTANT: AMD graphics cards have Vendor ID "1002" (inherited from
     # ATI), not "1022" (used for chipset/CPU devices) — confirmed on a
     # real device, there was originally a bug with the IDs swapped.
-    amd_gpu_device = find_device(
-        devices,
-        lambda d: d.get("VendorID") == "1002" and any(
-            kw in d.get("DeviceName", "").upper() for kw in ("RADEON", "AMD GRAPHICS")
-        ),
-    )
+    amd_gpu_device = find_device_by_vendor_and_keywords(devices, "1002", ("RADEON", "AMD GRAPHICS"))
     if amd_gpu_device is None:
         return None  # device not found in the system — silently skip
 
@@ -63,7 +73,13 @@ def check_amd_gpu(devices, board, laptop):
     # sees), we compare directly; if not, the version stayed the
     # marketing one ("26.7.1"), and comparing against it isn't safe
     current = amd_gpu_device.get("DriverVersion") if latest and latest.get("comparable_with_windows_version") else None
-    return report("AMD GPU", latest, current, page_url=AMD_GPU_PAGE_URL)
+    amd_device_name = amd_gpu_device.get("DeviceName") or ""
+    if _is_integrated_amd_gpu(amd_device_name):
+        amd_device_name += " (Integrated)"
+    return report(
+        "AMD GPU", latest, current, page_url=AMD_GPU_PAGE_URL,
+        device_name=amd_device_name, current_date=amd_gpu_device.get("DriverDate") if current else None,
+    )
 
 
 def check_intel_gpu(devices, board, laptop):
@@ -74,9 +90,10 @@ def check_intel_gpu(devices, board, laptop):
     # devices" error. So we search strictly for "ARC" or "IRIS XE", not
     # the generic "GRAPHICS"/bare "IRIS" (the latter also matches the
     # older Iris Plus/Pro).
-    current = find_device_driver_version(devices, "8086", ("ARC", "IRIS XE"))
-    if current is None:
+    device = find_device_by_vendor_and_keywords(devices, "8086", ("ARC", "IRIS XE"))
+    if device is None:
         return None  # device not found in the system (or not Xe-generation) — silently skip
+    current = device.get("DriverVersion")
 
     provider = IntelDownloadCenterProvider(
         download_id=INTEL_GPU_DOWNLOAD_ID, slug=INTEL_GPU_SLUG, name="intel_gpu"
@@ -88,4 +105,5 @@ def check_intel_gpu(devices, board, laptop):
     return report(
         "Intel GPU", latest, current,
         page_url=intel_download_url(INTEL_GPU_DOWNLOAD_ID, INTEL_GPU_SLUG),
+        device_name=device.get("DeviceName"), current_date=device.get("DriverDate"),
     )

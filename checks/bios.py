@@ -1,8 +1,8 @@
 import sys
 
 from net_utils import classify_error
-from checks.common import report, overall_drivers_page_url
-from providers.msi_bios import MsiBiosProvider, get_current_bios_version
+from checks.common import report, overall_drivers_page_url, manual_check_unavailable
+from providers.msi_bios import MsiBiosProvider, get_current_bios_info
 from providers.gigabyte_bios import GigabyteBiosProvider
 from providers.asus_bios import AsusBiosProvider
 
@@ -56,9 +56,10 @@ def check_bios(devices, board, laptop):
         except Exception as e:
             print(f"[BIOS] error (MSI): {classify_error(e)}", file=sys.stderr)
             latest = None
+        current, current_date = get_current_bios_info()
         return report(
-            "BIOS", latest, get_current_bios_version(), comparator=_bios_versions_match,
-            page_url=overall_drivers_page_url(board, laptop),
+            "BIOS", latest, current, comparator=_bios_versions_match,
+            page_url=overall_drivers_page_url(board, laptop), current_date=current_date,
         )
 
     if vendor == "gigabyte":
@@ -91,7 +92,7 @@ def check_bios(devices, board, laptop):
         # same underlying situation as Dell, same fix: a manual link
         # instead of a check that can never actually succeed.
         url = overall_drivers_page_url(board, laptop)
-        return f"[ASRock BIOS] automatic check unavailable — visit the site manually: {url}", None
+        return manual_check_unavailable("ASRock BIOS", url)
 
     if vendor == "asus":
         model = board.get("asus_model")
@@ -103,9 +104,10 @@ def check_bios(devices, board, laptop):
         except Exception as e:
             print(f"[BIOS] error (ASUS): {classify_error(e)}", file=sys.stderr)
             latest = None
+        current, current_date = get_current_bios_info()
         return report(
-            "BIOS", latest, get_current_bios_version(), comparator=_asus_desktop_bios_versions_match,
-            page_url=overall_drivers_page_url(board, laptop),
+            "BIOS", latest, current, comparator=_asus_desktop_bios_versions_match,
+            page_url=overall_drivers_page_url(board, laptop), current_date=current_date,
         )
 
     print(f"[BIOS] board vendor not recognized (manufacturer: {board.get('manufacturer_raw')})", file=sys.stderr)

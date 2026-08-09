@@ -1,8 +1,91 @@
 import sys
 import re
 from datetime import datetime
+from typing import NamedTuple
 
 from net_utils import classify_error
+
+
+class CheckResult(NamedTuple):
+    """
+    What a check_* function returns. display_line/update_line are the
+    exact text the CLI has always printed (main.py doesn't need to
+    change at all); the other fields are the same information broken out
+    for the GUI's table view (Device/Current/Available/Status columns).
+    """
+    device: str
+    current: str             # "Current" column text, "—" if unknown
+    available: str            # "Available" column text, "—" if unknown/not applicable
+    status: str                 # short status text, e.g. "Up to date", "Update available"
+    url: str | None              # manual-check page or update download link, if any
+    display_line: str             # unchanged CLI per-category line
+    update_line: str | None        # unchanged CLI "Updates available" line
+
+
+def _with_date(version, raw_date):
+    """
+    "6.4.0.2443" + "20220516000000.000000-000"/"2026/07/30"/etc. (any
+    format parse_flexible_date already handles) -> "6.4.0.2443
+    (2026-07-30)". Falls back to just the version if there's no date or
+    it doesn't parse — never fails, since a missing/unparseable date is
+    common and shouldn't hide the version itself.
+    """
+    if not version:
+        return "—"
+    date = parse_flexible_date(raw_date) if raw_date else None
+    return f"{version} ({date.date()})" if date else version
+
+
+def build_result(
+    label, display_line, update_line=None, current=None, available=None, status="", url=None, device_name=None,
+    current_date=None, available_date=None,
+):
+    """
+    device_name: the actual hardware name reported by Windows (e.g.
+    "NVIDIA GeForce RTX 5080"), when a check has one — shown in the GUI
+    table's Device column instead of the generic check label ("NVIDIA").
+    label is still used as-is for display_line, so CLI text never
+    changes; device_name/current_date/available_date only affect the
+    structured fields.
+
+    current_date/available_date: the driver's release date (installed
+    one from WMI's DriverDate, available one from whatever date field
+    the provider scraped), shown as "version (date)" in the GUI table.
+    """
+    return CheckResult(
+        device=device_name or label,
+        current=_with_date(current, current_date),
+        available=_with_date(available, available_date),
+        status=status,
+        url=url,
+        display_line=display_line,
+        update_line=update_line,
+    )
+
+
+def manual_result(label, display_line, url=None, current=None, device_name=None, current_date=None):
+    """
+    Shared shape for the "no automatic check possible" checks (Dell,
+    Huawei, Samsung, LG, Microsoft Surface, ASRock, ...) — each vendor's
+    exact display_line wording differs (it reflects something specific
+    confirmed about that vendor's site), but they all end up as the same
+    "manual check" row in the GUI's table.
+    """
+    return build_result(
+        label, display_line, current=current, status="Manual check", url=url, device_name=device_name,
+        current_date=current_date,
+    )
+
+
+def manual_check_unavailable(label, url, device_name=None):
+    """
+    Shared shape specifically for the "site confirmed blocked/unreachable
+    — visit it yourself" checks (ASRock, Dell, Huawei, and the desktop
+    vendor_configs' blocked-page fallback in checks/audio.py) — same
+    exact wording every time, just the label/url differ.
+    """
+    display_line = f"[{label}] automatic check unavailable — visit the site manually: {url}"
+    return manual_result(label, display_line, url=url, device_name=device_name)
 
 
 def find_device(devices, predicate):
@@ -39,14 +122,24 @@ def safe_get_latest(label: str, provider, device=None):
     return True, latest
 
 
-def find_device_driver_version(devices, vendor_id: str, name_keywords):
-    """Looks among devices for a match on VendorID and a name substring, returns DriverVersion."""
-    device = find_device(
+def find_device_by_vendor_and_keywords(devices, vendor_id: str, name_keywords):
+    """
+    Looks among devices for a match on VendorID and a name substring,
+    returns the device dict itself (or None) — use this instead of
+    find_device_driver_version when the caller also needs DeviceName/
+    DriverDate/etc., not just the version.
+    """
+    return find_device(
         devices,
         lambda d: d.get("VendorID") == vendor_id and any(
             kw in d.get("DeviceName", "").upper() for kw in name_keywords
         ),
     )
+
+
+def find_device_driver_version(devices, vendor_id: str, name_keywords):
+    """Looks among devices for a match on VendorID and a name substring, returns DriverVersion."""
+    device = find_device_by_vendor_and_keywords(devices, vendor_id, name_keywords)
     return device.get("DriverVersion") if device else None
 
 
@@ -143,6 +236,10 @@ def parse_flexible_date(raw: str):
     - WMI DriverDate (if PowerShell already converted it to ISO): "2022-05-16T00:00:00"
     - WMI DriverDate via ConvertTo-Json (ASP.NET style, confirmed on a
       real device): "/Date(1783123200000)/" — Unix time in ms
+    - NVIDIA's AjaxDriverService ReleaseDateTime (confirmed live):
+      "Tue Jul 28, 2026"
+    - Intel Download Center's lastModifieddate meta tag (confirmed live):
+      "08/04/2026 08:00:00"
     """
     if not raw:
         return None
@@ -155,7 +252,7 @@ def parse_flexible_date(raw: str):
         except (ValueError, OSError):
             return None
 
-    for fmt in ("%Y/%m/%d", "%Y%m%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+    for fmt in ("%Y/%m/%d", "%Y%m%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", "%a %b %d, %Y", "%m/%d/%Y %H:%M:%S"):
         try:
             # for the raw WMI format take only the first 8 characters (YYYYMMDD)
             candidate = raw[:8] if fmt == "%Y%m%d" else raw
@@ -165,37 +262,75 @@ def parse_flexible_date(raw: str):
     return None
 
 
-def report(label, latest, current, comparator=None, page_url=None):
+def report(label, latest, current, comparator=None, page_url=None, device_name=None, current_date=None):
     """
-    Shared comparison logic. Returns (display_line, update_line):
-    display_line — a status line for the overall report (always
-    present), update_line — a line for the "Updates available" section
-    (or None if no update was found/comparison wasn't possible). Doesn't
+    Shared comparison logic. Returns a CheckResult; display_line/
+    update_line are the exact text that's always been printed (doesn't
     print by itself — printing happens in main() after all the parallel
-    checks finish, in a fixed order by category.
+    checks finish, in a fixed order by category).
 
     page_url — when the site was reachable but no version could be
     extracted from it (e.g. a bot-protection challenge page served
     instead of the real content), a known fixed URL for the download
     page lets us point the user at it for a manual check instead of
     just saying "couldn't find a version".
+
+    device_name — the actual hardware name (see build_result), when the
+    caller has one; doesn't affect display_line/update_line text.
+
+    current_date — the installed driver's release date (e.g. from WMI's
+    DriverDate), when the caller has one. The available driver's date is
+    picked up automatically from latest["date"] if the provider scraped
+    one — the caller doesn't need to pass that part.
     """
+    available_date = latest.get("date") if latest else None
+
     if latest is None:
         if page_url:
             suffix = f" (installed {current})" if current is not None else ""
-            return f"[{label}] automatic check unavailable{suffix} — visit the site manually: {page_url}", None
+            display_line = f"[{label}] automatic check unavailable{suffix} — visit the site manually: {page_url}"
+            return build_result(
+                label, display_line, current=current, status="Manual check", url=page_url, device_name=device_name,
+                current_date=current_date,
+            )
         if current is not None:
-            return f"[{label}] installed {current} (couldn't find a version to compare against on the site)", None
-        return f"[{label}] could not find a version on the site to compare against", None
+            display_line = f"[{label}] installed {current} (couldn't find a version to compare against on the site)"
+            return build_result(
+                label, display_line, current=current, status="Not found", device_name=device_name,
+                current_date=current_date,
+            )
+        display_line = f"[{label}] could not find a version on the site to compare against"
+        return build_result(label, display_line, status="Not found", device_name=device_name)
 
     if current is None:
-        return f"[{label}] on the site: {latest['version']} (couldn't compare against the installed version)", None
+        display_line = f"[{label}] on the site: {latest['version']} (couldn't compare against the installed version)"
+        return build_result(
+            label, display_line, available=latest["version"], status="Found (no comparison)",
+            url=latest.get("page_url") or latest.get("url"), device_name=device_name, available_date=available_date,
+        )
 
     is_match = comparator(current, latest["version"]) if comparator else (current == latest["version"])
 
     if is_match:
-        return f"[{label}] up to date ({latest['version']})", None
+        display_line = f"[{label}] up to date ({latest['version']})"
+        # same version on both sides means it's the same release — if only
+        # one side's source happened to give us a date, show that date on
+        # both instead of leaving the other side bare
+        shared_date = current_date or available_date
+        return build_result(
+            label, display_line, current=current, available=latest["version"], status="Up to date",
+            # even when up to date, link to the source page if we have one —
+            # lets the GUI table offer a "check it yourself" link on every
+            # row, not just when an update was found
+            url=latest.get("page_url") or latest.get("url"), device_name=device_name,
+            current_date=shared_date, available_date=shared_date,
+        )
 
     display_url = latest.get("page_url") or latest.get("url") or ""
     update_line = f"{label}: installed {current} -> available {latest['version']} ({display_url})"
-    return f"[{label}] UPDATE AVAILABLE: {current} -> {latest['version']}", update_line
+    display_line = f"[{label}] UPDATE AVAILABLE: {current} -> {latest['version']}"
+    return build_result(
+        label, display_line, update_line, current=current, available=latest["version"],
+        status="Download update", url=display_url or None, device_name=device_name,
+        current_date=current_date, available_date=available_date,
+    )

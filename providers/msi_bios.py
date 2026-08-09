@@ -26,6 +26,8 @@ obtained separately via:
     Get-CimInstance Win32_BIOS | Select SMBIOSBIOSVersion
 """
 
+import json
+
 from curl_cffi import requests
 
 from providers.base import DriverProvider
@@ -35,12 +37,26 @@ SUPPORT_PAGE_URL = "https://www.msi.com/Motherboard/{slug}/support"
 API_URL = "https://www.msi.com/api/v1/product/support/panel"
 BIOS_CATEGORY_KEY = "AMI BIOS"
 
+# both fields in one PowerShell call instead of two separate ones (every
+# call site that wants the version wants the date too) — halves the
+# process-launch overhead for every BIOS check. ReleaseDate is formatted
+# explicitly to ISO (yyyy-MM-dd) in the command itself: printing the raw
+# CIM datetime comes out in the system's locale (confirmed live: garbled
+# non-English month names), which parse_flexible_date() can't parse back.
+_BIOS_INFO_PS = (
+    "Get-CimInstance Win32_BIOS | Select-Object SMBIOSBIOSVersion, "
+    "@{n='ReleaseDate';e={$_.ReleaseDate.ToString('yyyy-MM-dd')}} | ConvertTo-Json"
+)
 
-def get_current_bios_version() -> str | None:
-    """The BIOS version currently installed on the system (Windows only)."""
-    result = run_powershell("(Get-CimInstance Win32_BIOS).SMBIOSBIOSVersion")
-    version = result.stdout.strip()
-    return version or None
+
+def get_current_bios_info() -> tuple[str | None, str | None]:
+    """The installed BIOS's (version, release date) — Windows only."""
+    result = run_powershell(_BIOS_INFO_PS)
+    try:
+        data = json.loads(result.stdout)
+    except (json.JSONDecodeError, TypeError):
+        return None, None
+    return data.get("SMBIOSBIOSVersion") or None, data.get("ReleaseDate") or None
 
 
 class MsiBiosProvider(DriverProvider):

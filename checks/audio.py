@@ -2,7 +2,10 @@ import sys
 
 from net_utils import classify_error
 from scanner import get_devices_by_id_pattern
-from checks.common import find_device, find_device_driver_version, safe_get_latest, report, no_downgrade_match, overall_drivers_page_url
+from checks.common import (
+    find_device, find_device_driver_version, safe_get_latest, report, no_downgrade_match, overall_drivers_page_url,
+    manual_check_unavailable,
+)
 from providers.msi_driver import MsiDriverProvider, get_installed_inf_version
 from providers.gigabyte_driver import GigabyteDriverProvider
 from providers.asus_driver import AsusDriverProvider
@@ -34,7 +37,7 @@ def _find_audio_device(devices):
     return audio_device
 
 
-def _check_audio_via_windows_update(devices):
+def _check_audio_via_windows_update(audio_device):
     """
     Fallback path for when the board isn't from one of the known vendors
     (MSI/Gigabyte/ASRock/ASUS) or its page has no Audio category.
@@ -42,8 +45,11 @@ def _check_audio_via_windows_update(devices):
     back in 2022, not a viable source for an up-to-date check. Instead
     we use the Microsoft Update Catalog: the WHQL builds Realtek itself
     submits to Windows Update actually do get updated.
+
+    Takes the already-resolved audio device (see check_audio) rather
+    than re-discovering it — _find_audio_device() can shell out to
+    PowerShell on its fallback path, not worth paying for twice.
     """
-    audio_device = _find_audio_device(devices)
     if audio_device is None:
         return None  # no audio codec in the system — silently skip
 
@@ -60,11 +66,14 @@ def _check_audio_via_windows_update(devices):
     # Windows Update, we don't suggest a "downgrade"
     return report(
         f"Audio ({device_name})", latest, current, comparator=no_downgrade_match,
-        page_url=catalog_search_url(device_name),
+        page_url=catalog_search_url(device_name), device_name=device_name,
+        current_date=audio_device.get("DriverDate"),
     )
 
 
-def _check_vendor_audio_driver(board, vendor, slug_field, provider_factory, label, current_version_getter=None):
+def _check_vendor_audio_driver(
+    board, vendor, slug_field, provider_factory, label, current_version_getter=None, device_name=None,
+):
     """
     Shared pattern for vendor-specific desktop-board audio drivers
     (MSI/Gigabyte/ASRock/ASUS) — they only differ in the provider class,
@@ -98,7 +107,7 @@ def _check_vendor_audio_driver(board, vendor, slug_field, provider_factory, labe
         return False, None, False  # this board's page has no "Audio" category
 
     current = current_version_getter() if current_version_getter else None
-    return True, report(label, latest, current), False
+    return True, report(label, latest, current, device_name=device_name), False
 
 
 def check_audio(devices, board, laptop):
@@ -134,6 +143,9 @@ def check_audio(devices, board, laptop):
     if laptop.get("is_laptop"):
         return None
 
+    audio_device = _find_audio_device(devices)
+    device_name = audio_device.get("DeviceName") if audio_device else None
+
     if board.get("vendor") == "asrock" and board.get("asrock_model"):
         # automatic checking isn't possible: confirmed live that ASRock's
         # site is blocked by Incapsula (a JS-challenge bot-protection
@@ -146,7 +158,7 @@ def check_audio(devices, board, laptop):
         # ASRock branch and Dell: a manual link instead of a check that
         # can never actually succeed.
         url = overall_drivers_page_url(board, laptop)
-        return f"[ASRock Audio Driver] automatic check unavailable — visit the site manually: {url}", None
+        return manual_check_unavailable("ASRock Audio Driver", url, device_name=device_name)
 
     vendor_configs = [
         dict(
@@ -188,15 +200,15 @@ def check_audio(devices, board, laptop):
     ]
 
     for cfg in vendor_configs:
-        found, result, blocked = _check_vendor_audio_driver(board, **cfg)
+        found, result, blocked = _check_vendor_audio_driver(board, device_name=device_name, **cfg)
         if found:
             return result
         if blocked:
             url = overall_drivers_page_url(board, laptop)
             if url:
-                return f"[{cfg['label']}] automatic check unavailable — visit the site manually: {url}", None
+                return manual_check_unavailable(cfg["label"], url, device_name=device_name)
             break  # no fallback link available either — fall through below
-    return _check_audio_via_windows_update(devices)
+    return _check_audio_via_windows_update(audio_device)
 
 
 def check_senary_audio(devices, board, laptop):
@@ -228,4 +240,6 @@ def check_senary_audio(devices, board, laptop):
     # the OEM (e.g. Huawei) repackages the driver under its own version
     # number, different from what's on the SenaryTech site — comparison
     # isn't reliable
-    return report("Senary Audio", latest, current=None, page_url=SENARY_PAGE_URL)
+    return report(
+        "Senary Audio", latest, current=None, page_url=SENARY_PAGE_URL, device_name=device.get("DeviceName"),
+    )

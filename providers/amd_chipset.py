@@ -112,6 +112,13 @@ class AmdChipsetProvider(DriverProvider):
                 "raw_revision": revision,
                 "date": release_date,
                 "url": download_link["href"] if download_link else None,
+                # AMD's CDN rejects direct/hotlinked navigation to the raw
+                # .exe URL with no referrer (confirmed live: it redirects
+                # to a "Download Not Complete" page) — link to the support
+                # page instead, where AMD's own Download button sets the
+                # right referrer. report()/build_result() already prefer
+                # page_url over url for exactly this kind of case.
+                "page_url": self.page_url,
             }
 
         # fallback path: some sections of the site (e.g. processor/APU
@@ -155,6 +162,7 @@ class AmdChipsetProvider(DriverProvider):
             "raw_revision": revision,
             "date": date_match.group(0) if date_match else None,
             "url": url_match.group(0) if url_match else None,
+            "page_url": self.page_url,
         }
 
     @staticmethod

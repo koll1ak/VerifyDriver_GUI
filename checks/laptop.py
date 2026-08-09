@@ -4,14 +4,14 @@ from net_utils import classify_error
 from scanner import get_devices_by_id_pattern
 from checks.common import (
     find_device, find_device_driver_version, laptop_model_if_vendor, safe_get_latest, report, no_downgrade_match,
-    overall_drivers_page_url,
+    overall_drivers_page_url, manual_result, manual_check_unavailable, build_result,
 )
 from providers.dell_support import dell_drivers_url
 from providers.acer_support import AcerSupportProvider
 from providers.huawei_support import huawei_search_url
 from providers.lenovo_support import LenovoSupportProvider
 from providers.hp_support import HpSupportProvider
-from providers.msi_bios import get_current_bios_version
+from providers.msi_bios import get_current_bios_info
 from providers.msi_laptop import MsiLaptopBiosProvider, MsiLaptopDriverProvider, GENERIC_SUPPORT_PAGE_URL as MSI_LAPTOP_SUPPORT_URL
 from providers.gigabyte_laptop import GigabyteLaptopProvider
 from providers.lg_support import LgSupportProvider
@@ -64,6 +64,20 @@ def _acer_lan_versions_match(current: str, latest: str) -> bool:
     return _norm(current) == _norm(latest)
 
 
+def _acer_os_mismatch_result(label, latest, current):
+    """
+    Shared shape for check_acer_audio/check_acer_lan when Acer's catalog
+    only has an entry for a different OS than what's installed — show
+    what was found, but don't claim "update available" since we're not
+    sure it's actually meant for this OS.
+    """
+    display_line = f"[{label}] on the site (different OS in the catalog): {latest['version']} — comparison isn't reliable"
+    return build_result(
+        label, display_line, current=current, available=latest["version"],
+        status="Found (OS mismatch)", url=latest.get("page_url") or latest.get("url"),
+    )
+
+
 def check_dell_bios(devices, board, laptop):
     """
     Dell laptops only (detected independently of board_detect.py, which
@@ -80,7 +94,7 @@ def check_dell_bios(devices, board, laptop):
     url = dell_drivers_url(tag)
     if url is None:
         return None
-    return f"[Dell BIOS] automatic check unavailable — visit the site manually: {url}", None
+    return manual_check_unavailable("Dell BIOS", url)
 
 
 def check_dell_audio(devices, board, laptop):
@@ -94,7 +108,7 @@ def check_dell_audio(devices, board, laptop):
     url = dell_drivers_url(tag)
     if url is None:
         return None
-    return f"[Dell Audio] automatic check unavailable — visit the site manually: {url}", None
+    return manual_check_unavailable("Dell Audio", url)
 
 
 def check_acer_bios(devices, board, laptop):
@@ -118,9 +132,10 @@ def check_acer_bios(devices, board, laptop):
     # Acer's BIOS version is in a plain format ("2.06"), not tied to the
     # board model (unlike MSI) — but Windows adds a "V" prefix (V2.06)
     # that isn't on the site, so we compare via a separate comparator
+    current, current_date = get_current_bios_info()
     return report(
-        "Acer BIOS", latest, get_current_bios_version(), comparator=_acer_bios_versions_match,
-        page_url=provider.build_page_url(),
+        "Acer BIOS", latest, current, comparator=_acer_bios_versions_match,
+        page_url=provider.build_page_url(), current_date=current_date,
     )
 
 
@@ -159,10 +174,7 @@ def check_acer_audio(devices, board, laptop):
         current = audio_device.get("DriverVersion") if audio_device else None
 
     if latest and latest.get("os_mismatch"):
-        # Acer's catalog has no separate entry for the installed OS — we
-        # show what we found, but don't claim "update available" since
-        # we're not sure the version is actually meant for this OS
-        return f"[Acer Audio] on the site (different OS in the catalog): {latest['version']} — comparison isn't reliable", None
+        return _acer_os_mismatch_result("Acer Audio", latest, current)
 
     return report("Acer Audio", latest, current, page_url=provider.build_page_url())
 
@@ -216,7 +228,7 @@ def check_acer_lan(devices, board, laptop):
         current = lan_device.get("DriverVersion") if lan_device else None
 
     if latest and latest.get("os_mismatch"):
-        return f"[Acer LAN] on the site (different OS in the catalog): {latest['version']} — comparison isn't reliable", None
+        return _acer_os_mismatch_result("Acer LAN", latest, current)
 
     return report(
         "Acer LAN", latest, current, comparator=_acer_lan_versions_match,
@@ -240,9 +252,10 @@ def check_asus_laptop_bios(devices, board, laptop):
     # try comparing directly — the ASUS format hasn't been verified; if
     # it doesn't match, we'll sort it out from real data (as with
     # Acer/MSI earlier)
+    current, current_date = get_current_bios_info()
     return report(
-        "ASUS BIOS", latest, get_current_bios_version(), comparator=_asus_laptop_bios_versions_match,
-        page_url=overall_drivers_page_url(board, laptop),
+        "ASUS BIOS", latest, current, comparator=_asus_laptop_bios_versions_match,
+        page_url=overall_drivers_page_url(board, laptop), current_date=current_date,
     )
 
 
@@ -331,7 +344,7 @@ def check_huawei_bios(devices, board, laptop):
     url = huawei_search_url(laptop.get("model"))
     if url is None:
         return None
-    return f"[Huawei BIOS] automatic check unavailable — visit the site manually: {url}", None
+    return manual_check_unavailable("Huawei BIOS", url)
 
 
 def check_lenovo_bios(devices, board, laptop):
@@ -531,14 +544,16 @@ def check_samsung_bios(devices, board, laptop):
     """
     if not laptop.get("is_laptop") or "SAMSUNG" not in (laptop.get("manufacturer") or "").upper():
         return None
-    return '[Samsung BIOS] automatic check unavailable — download and visit the "Samsung Download Center" application', None
+    display_line = '[Samsung BIOS] automatic check unavailable — download and visit the "Samsung Download Center" application'
+    return manual_result("Samsung BIOS", display_line)
 
 
 def check_samsung_audio(devices, board, laptop):
     """Same as check_samsung_bios, but for the Audio category."""
     if not laptop.get("is_laptop") or "SAMSUNG" not in (laptop.get("manufacturer") or "").upper():
         return None
-    return '[Samsung Audio] automatic check unavailable — download and visit the "Samsung Download Center" application', None
+    display_line = '[Samsung Audio] automatic check unavailable — download and visit the "Samsung Download Center" application'
+    return manual_result("Samsung Audio", display_line)
 
 
 def check_lg_bios(devices, board, laptop):
@@ -551,7 +566,8 @@ def check_lg_bios(devices, board, laptop):
     """
     if not laptop.get("is_laptop") or "LG" not in (laptop.get("manufacturer") or "").upper():
         return None
-    return '[LG BIOS] latest BIOS can be checked in the "LG Update" application', None
+    display_line = '[LG BIOS] latest BIOS can be checked in the "LG Update" application'
+    return manual_result("LG BIOS", display_line)
 
 
 def check_lg_audio(devices, board, laptop):
@@ -592,7 +608,8 @@ def check_microsoft_surface_bios(devices, board, laptop):
     url = surface_drivers_url(model)
     if url is None:
         return None
-    return f"[Microsoft Surface BIOS] all drivers/firmware ship as one bundle — download page: {url}", None
+    display_line = f"[Microsoft Surface BIOS] all drivers/firmware ship as one bundle — download page: {url}"
+    return manual_result("Microsoft Surface BIOS", display_line, url=url)
 
 
 def check_microsoft_surface_audio(devices, board, laptop):
@@ -603,4 +620,5 @@ def check_microsoft_surface_audio(devices, board, laptop):
     url = surface_drivers_url(model)
     if url is None:
         return None
-    return f"[Microsoft Surface Audio] all drivers/firmware ship as one bundle — download page: {url}", None
+    display_line = f"[Microsoft Surface Audio] all drivers/firmware ship as one bundle — download page: {url}"
+    return manual_result("Microsoft Surface Audio", display_line, url=url)

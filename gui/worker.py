@@ -9,7 +9,6 @@ from orchestrator import run_checks
 
 # message tags put on the queue: (tag, *payload)
 NO_INTERNET = "no_internet"
-RESULT = "result"       # (category, display_line, update_line)
 ERROR = "error"          # (category, message)
 DONE = "done"             # (results, board, laptop)
 FATAL = "fatal"            # (message,)
@@ -34,7 +33,6 @@ def start_scan(result_queue: queue.Queue) -> threading.Thread:
             laptop = detect_laptop()
             results = run_checks(
                 devices, board, laptop,
-                on_result=lambda cat, disp, upd: result_queue.put((RESULT, cat, disp, upd)),
                 on_error=lambda cat, msg: result_queue.put((ERROR, cat, msg)),
             )
             result_queue.put((DONE, results, board, laptop))
