@@ -37,6 +37,29 @@ def _clean_cell(cell: str) -> str:
     return cell.replace("\\_", "_").replace("\\*", "").strip()
 
 
+_DATE_CELL_RE = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{4})\*?$")
+
+
+def _normalize_date_cell(cell: str) -> str:
+    """
+    The database's date column is day/month/year with a trailing "*"
+    footnote marker (confirmed live, e.g. "18/03/2026*") -- a format
+    parse_flexible_date (checks/common.py) doesn't recognize (it only
+    knows month/day/year for slash-separated dates, used by other
+    sources like pnputil), so every date from here silently failed to
+    parse and got dropped. Converting to ISO (YYYY-MM-DD) here, specific
+    to this one source, avoids making the shared parser guess between
+    day/month/year and month/day/year for ambiguous cells from other
+    providers.
+    """
+    cleaned = _clean_cell(cell)
+    m = _DATE_CELL_RE.match(cleaned)
+    if not m:
+        return cleaned
+    day, month, year = m.groups()
+    return f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+
+
 def _parse_database(text: str) -> list[dict]:
     rows = []
     for line in text.splitlines():
@@ -61,7 +84,7 @@ def _parse_database(text: str) -> list[dict]:
                 "inf": _clean_cell(inf_cell),
                 "package": _clean_cell(package_cell),
                 "version": _clean_cell(version_cell),
-                "date": _clean_cell(date_cell),
+                "date": _normalize_date_cell(date_cell),
                 "hwids": hwids,
             })
     return rows

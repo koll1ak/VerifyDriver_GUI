@@ -32,21 +32,41 @@ class CheckResult(NamedTuple):
 # old, so it's treated the same as "no date" rather than displayed.
 _NULL_DRIVER_PLACEHOLDER_DATE = datetime(2006, 6, 21)
 
+# Some Intel chipset "platform" devices (SMBus/LPC Controller/Host Bridge,
+# confirmed live via Win32_PnPSignedDriver.DriverDate) report a DriverDate
+# of 1968-07-18 -- another garbage/uninitialized placeholder, like the
+# 2006-06-21 one above but not a single fixed constant we've seen (no
+# confirmed alternate value yet). No real Windows driver predates 1990,
+# so any date parsed before this cutoff is treated as "no date" the same
+# way -- showing a fabricated decades-old date is worse than showing none.
+_IMPLAUSIBLY_OLD_DATE_CUTOFF = datetime(1990, 1, 1)
+
+
+def _parse_valid_date(raw_date):
+    """
+    Parses raw_date (any format parse_flexible_date handles) and filters
+    out known-garbage placeholder dates, returning a real datetime or
+    None either way — used both to render a date and to decide, when two
+    sources disagree, which one is actually worth showing.
+    """
+    date = parse_flexible_date(raw_date) if raw_date else None
+    if date == _NULL_DRIVER_PLACEHOLDER_DATE or (date and date < _IMPLAUSIBLY_OLD_DATE_CUTOFF):
+        return None
+    return date
+
 
 def _with_date(version, raw_date):
     """
     "6.4.0.2443" + "20220516000000.000000-000"/"2026/07/30"/etc. (any
     format parse_flexible_date already handles) -> "6.4.0.2443
     (2026-07-30)". Falls back to just the version if there's no date, it
-    doesn't parse, or it's the generic inbox-driver placeholder date —
-    never fails, since a missing/unparseable date is common and
-    shouldn't hide the version itself.
+    doesn't parse, or it's a known-garbage placeholder date — never
+    fails, since a missing/unparseable date is common and shouldn't hide
+    the version itself.
     """
     if not version:
         return "—"
-    date = parse_flexible_date(raw_date) if raw_date else None
-    if date == _NULL_DRIVER_PLACEHOLDER_DATE:
-        date = None
+    date = _parse_valid_date(raw_date)
     return f"{version} ({date.date()})" if date else version
 
 
@@ -335,9 +355,12 @@ def report(label, latest, current, comparator=None, page_url=None, device_name=N
     if is_match:
         display_line = f"[{label}] up to date ({latest['version']})"
         # same version on both sides means it's the same release — if only
-        # one side's source happened to give us a date, show that date on
-        # both instead of leaving the other side bare
-        shared_date = current_date or available_date
+        # one side's source happened to give us a (valid) date, show that
+        # date on both instead of leaving the other side bare. Prefer
+        # current_date only when it actually holds a real date — a
+        # garbage/placeholder current_date shouldn't win over a genuinely
+        # parseable available_date just because it's non-empty.
+        shared_date = current_date if _parse_valid_date(current_date) else available_date
         return build_result(
             label, display_line, current=current, available=latest["version"], status="Up to date",
             # even when up to date, link to the source page if we have one —
