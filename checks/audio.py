@@ -199,9 +199,22 @@ def check_audio(devices, board, laptop):
             # version of the package in the Driver Store. We get the
             # actual installed MSI/Realtek package version separately —
             # "rtdusbad" is the stable part of the INF name for Realtek
-            # USB Audio on MSI boards
-            current_version_getter=lambda: get_installed_inf_version("rtdusbad"),
-            current_date_getter=lambda: get_installed_inf_date("rtdusbad"),
+            # USB Audio on MSI boards specifically — it won't match the
+            # far more common PCI/HDA "Realtek High Definition Audio"
+            # codec (confirmed live: pnputil finds no "rtdusbad" INF at
+            # all in that case, silently leaving current blank even
+            # though a driver is installed and the site's version was
+            # found fine). Fall back to the same WMI-based lookup
+            # Gigabyte/ASUS already use below when the USB-specific INF
+            # isn't present.
+            current_version_getter=lambda: get_installed_inf_version("rtdusbad")
+            or find_device_driver_version(devices, "10EC", ("AUDIO",))
+            or find_device_driver_version(devices, "0BDA", ("AUDIO",)),
+            current_date_getter=lambda: get_installed_inf_date("rtdusbad") or (
+                find_device_by_vendor_and_keywords(devices, "10EC", ("AUDIO",))
+                or find_device_by_vendor_and_keywords(devices, "0BDA", ("AUDIO",))
+                or {}
+            ).get("DriverDate"),
         ),
         dict(
             vendor="gigabyte", slug_field="gigabyte_slug", label="Gigabyte Audio Driver",
