@@ -13,6 +13,8 @@ Known IDs:
 - 785597  — Intel Arc & Iris Xe Graphics Driver (Windows)
 """
 
+import re
+
 from curl_cffi import requests
 from bs4 import BeautifulSoup
 
@@ -34,6 +36,71 @@ def _find_meta(soup, name: str) -> str | None:
                 tag = m
                 break
     return tag.get("content", "").strip() if tag and tag.get("content") else None
+
+
+_PURPOSE_LI_RE = re.compile(r"^Driver version\s+(\S+)\s*:\s*For\s+(.+)$", re.IGNORECASE)
+
+
+def _parse_purpose_chip_versions(soup: BeautifulSoup) -> list[dict]:
+    """
+    Extracts the "Purpose" section's chip -> driver version mapping from
+    an Intel download page's Detailed Description block (confirmed live
+    on the Bluetooth driver page, download ID 18649), e.g.:
+        "Driver version 24.60.0.4 : For BE213, BE211, ... AX211"
+        "Driver version 24.40.11.1 : For AX411, AX211, ... 9260"
+    -> [{"version": "24.60.0.4", "chips": {"BE213", "BE211", ..., "AX211"}}, ...]
+
+    A single chip can legitimately appear in more than one entry (the
+    same silicon paired with different platforms, e.g. AX211 on Panther
+    Lake vs. Wildcat Lake) -- callers decide how to handle that.
+
+    Scoped to the "Detailed Description" block (found via its <h2>
+    heading) rather than the whole page, so an unrelated "Driver
+    version ... : For ..." string elsewhere can't leak in. Returns []
+    if the page doesn't have this section at all -- callers already
+    treat an empty list as "no chip-specific data available" and fall
+    back to the package-level version.
+    """
+    heading = soup.find(lambda tag: tag.name == "h2" and tag.get_text(strip=True) == "Detailed Description")
+    if heading is None:
+        return []
+    container = heading.find_next("div")
+    if container is None:
+        return []
+
+    entries = []
+    for li in container.find_all("li"):
+        text = li.get_text(" ", strip=True)
+        m = _PURPOSE_LI_RE.match(text)
+        if not m:
+            continue
+        version, chip_list = m.groups()
+        chips = {c.strip().upper() for c in chip_list.split(",") if c.strip()}
+        if chips:
+            entries.append({"version": version, "chips": chips})
+    return entries
+
+
+def find_chip_versions_for_device(chip_versions: list[dict], *device_names) -> list[str] | None:
+    """
+    Given _parse_purpose_chip_versions's output and one or more device
+    name strings to check (in priority order -- e.g. the Bluetooth
+    device's own name, then a fallback like the WiFi adapter's name on
+    the same combo card, since Bluetooth's own Windows name is
+    typically generic -- confirmed live: "Intel(R) Wireless
+    Bluetooth(R)", no chip code), returns every driver version Intel
+    lists for whichever known chip code is found first, or None if none
+    of the given names contain a chip code from chip_versions at all.
+    """
+    all_chips = {chip for entry in chip_versions for chip in entry["chips"]}
+    for name in device_names:
+        if not name:
+            continue
+        name_upper = name.upper()
+        matched_chips = {chip for chip in all_chips if re.search(rf"\b{re.escape(chip)}\b", name_upper)}
+        if matched_chips:
+            return [entry["version"] for entry in chip_versions if entry["chips"] & matched_chips]
+    return None
 
 
 class IntelDownloadCenterProvider(DriverProvider):
