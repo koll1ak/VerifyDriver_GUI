@@ -76,6 +76,12 @@ class App:
 
         self._build_widgets()
 
+        # kick off a scan automatically once the window is up, rather
+        # than sitting idle until the user clicks "Scan" — scheduled via
+        # after() instead of a direct call so the window finishes
+        # painting first
+        self.root.after(100, self._start_scan)
+
     def run(self):
         self.root.mainloop()
 
