@@ -3,8 +3,9 @@ import sys
 from net_utils import classify_error
 from scanner import get_devices_by_id_pattern
 from checks.common import (
-    find_device, find_device_driver_version, laptop_model_if_vendor, safe_get_latest, report, no_downgrade_match,
-    overall_drivers_page_url, manual_result, manual_check_unavailable, build_result,
+    find_device, find_device_driver_version, find_device_by_vendor_and_keywords, laptop_model_if_vendor,
+    safe_get_latest, report, no_downgrade_match, overall_drivers_page_url, manual_result, manual_check_unavailable,
+    build_result,
 )
 from providers.dell_support import dell_drivers_url
 from providers.acer_support import AcerSupportProvider
@@ -64,7 +65,7 @@ def _acer_lan_versions_match(current: str, latest: str) -> bool:
     return _norm(current) == _norm(latest)
 
 
-def _acer_os_mismatch_result(label, latest, current):
+def _acer_os_mismatch_result(label, latest, current, current_date=None):
     """
     Shared shape for check_acer_audio/check_acer_lan when Acer's catalog
     only has an entry for a different OS than what's installed — show
@@ -75,6 +76,7 @@ def _acer_os_mismatch_result(label, latest, current):
     return build_result(
         label, display_line, current=current, available=latest["version"],
         status="Found (OS mismatch)", url=latest.get("page_url") or latest.get("url"),
+        current_date=current_date, available_date=latest.get("date"),
     )
 
 
@@ -158,13 +160,16 @@ def check_acer_audio(devices, board, laptop):
     # driver), the versions might match directly (a format like
     # "6.0.9180.1" looks like what Windows shows for an installed
     # Realtek package)
-    current = find_device_driver_version(devices, "10EC", ("AUDIO",)) or \
-        find_device_driver_version(devices, "0BDA", ("AUDIO",))
+    audio_device = find_device_by_vendor_and_keywords(devices, "10EC", ("AUDIO",)) or \
+        find_device_by_vendor_and_keywords(devices, "0BDA", ("AUDIO",))
+    current = audio_device.get("DriverVersion") if audio_device else None
+    current_date = audio_device.get("DriverDate") if audio_device else None
 
     if current is None:
         # Win32_PnPSignedDriver sometimes doesn't see the audio device
         # (same as on desktop with a USB codec) — fallback lookup via
-        # Get-PnpDevice
+        # Get-PnpDevice. That query doesn't report DriverDate at all, so
+        # current_date stays None here — honestly "unknown", not a bug.
         try:
             fallback_devices = get_devices_by_id_pattern("VEN_10EC")
         except Exception as e:
@@ -178,9 +183,11 @@ def check_acer_audio(devices, board, laptop):
     # different Windows version doesn't mean the file itself is wrong,
     # and an exact version match is stronger evidence than the tag
     if latest and latest.get("os_mismatch") and current != latest.get("version"):
-        return _acer_os_mismatch_result("Acer Audio", latest, current)
+        return _acer_os_mismatch_result("Acer Audio", latest, current, current_date=current_date)
 
-    return report("Acer Audio", latest, current, page_url=provider.build_page_url())
+    return report(
+        "Acer Audio", latest, current, page_url=provider.build_page_url(), current_date=current_date,
+    )
 
 
 def check_acer_lan(devices, board, laptop):
@@ -214,12 +221,16 @@ def check_acer_lan(devices, board, laptop):
     # look for a network adapter — Killer/Realtek/Intel, on Acer it's
     # most often Killer (sometimes actually a rebranded Realtek chip
     # under their brand)
-    current = find_device_driver_version(devices, "10EC", ("ETHERNET", "GIGABIT", "KILLER")) or \
-        find_device_driver_version(devices, "8086", ("ETHERNET", "I219", "I225", "I226"))
+    lan_device = find_device_by_vendor_and_keywords(devices, "10EC", ("ETHERNET", "GIGABIT", "KILLER")) or \
+        find_device_by_vendor_and_keywords(devices, "8086", ("ETHERNET", "I219", "I225", "I226"))
+    current = lan_device.get("DriverVersion") if lan_device else None
+    current_date = lan_device.get("DriverDate") if lan_device else None
 
     if current is None:
         # the same fallback path as for audio, in case
-        # Win32_PnPSignedDriver doesn't see the device directly
+        # Win32_PnPSignedDriver doesn't see the device directly. That
+        # query doesn't report DriverDate at all, so current_date stays
+        # None here — honestly "unknown", not a bug.
         try:
             fallback_devices = get_devices_by_id_pattern("VEN_10EC")
         except Exception as e:
@@ -235,11 +246,11 @@ def check_acer_lan(devices, board, laptop):
     # check's own comparator) is stronger evidence than the catalog's OS
     # tag, so don't treat it as an unreliable comparison in that case
     if latest and latest.get("os_mismatch") and not _acer_lan_versions_match(current, latest.get("version")):
-        return _acer_os_mismatch_result("Acer LAN", latest, current)
+        return _acer_os_mismatch_result("Acer LAN", latest, current, current_date=current_date)
 
     return report(
         "Acer LAN", latest, current, comparator=_acer_lan_versions_match,
-        page_url=provider.build_page_url(),
+        page_url=provider.build_page_url(), current_date=current_date,
     )
 
 
