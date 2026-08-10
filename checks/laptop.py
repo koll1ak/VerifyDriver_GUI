@@ -173,7 +173,11 @@ def check_acer_audio(devices, board, laptop):
         audio_device = find_device(fallback_devices, lambda d: "AUDIO" in d.get("DeviceName", "").upper())
         current = audio_device.get("DriverVersion") if audio_device else None
 
-    if latest and latest.get("os_mismatch"):
+    # an os_mismatch entry is still worth trusting if the version matches
+    # what's actually installed — the catalog's OS tag being for a
+    # different Windows version doesn't mean the file itself is wrong,
+    # and an exact version match is stronger evidence than the tag
+    if latest and latest.get("os_mismatch") and current != latest.get("version"):
         return _acer_os_mismatch_result("Acer Audio", latest, current)
 
     return report("Acer Audio", latest, current, page_url=provider.build_page_url())
@@ -227,7 +231,10 @@ def check_acer_lan(devices, board, laptop):
         )
         current = lan_device.get("DriverVersion") if lan_device else None
 
-    if latest and latest.get("os_mismatch"):
+    # same reasoning as check_acer_audio: an exact version match (by this
+    # check's own comparator) is stronger evidence than the catalog's OS
+    # tag, so don't treat it as an unreliable comparison in that case
+    if latest and latest.get("os_mismatch") and not _acer_lan_versions_match(current, latest.get("version")):
         return _acer_os_mismatch_result("Acer LAN", latest, current)
 
     return report(
