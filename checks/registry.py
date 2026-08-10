@@ -1,6 +1,7 @@
 from checks.bios import check_bios
 from checks.chipset import check_amd_chipset, check_intel_chipset
 from checks.gpu import check_nvidia, check_amd_gpu, check_intel_gpu
+from checks.npu import check_intel_npu
 from checks.audio import check_audio, check_senary_audio
 from checks.network import (
     check_realtek_lan, check_realtek_wifi, check_realtek_usb_lan,
@@ -22,7 +23,7 @@ from checks.laptop import (
 )
 
 CATEGORY_ORDER = [
-    "BIOS", "Chipset", "Integrated GPU", "GPU", "Audio", "LAN", "WiFi", "Bluetooth",
+    "BIOS", "Chipset", "Integrated GPU", "GPU", "NPU", "Audio", "LAN", "WiFi", "Bluetooth",
 ]
 
 # (category, function) — the category is only used for ordering in the
@@ -46,6 +47,7 @@ CHECKS = [
     ("Integrated GPU", check_intel_gpu),
     ("GPU", check_nvidia),
     ("GPU", check_amd_gpu),
+    ("NPU", check_intel_npu),
     ("Audio", check_audio),
     ("Audio", check_dell_audio),
     ("Audio", check_acer_audio),
