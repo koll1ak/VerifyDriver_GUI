@@ -13,6 +13,7 @@ hardware.
 | Chipset | AMD, Intel |
 | Integrated GPU | Intel |
 | GPU | NVIDIA, AMD, Intel |
+| NPU | Intel |
 | Audio | Motherboard vendor's page (MSI/Gigabyte/ASUS) → Microsoft Update Catalog as fallback · Dell, Acer, ASUS, Lenovo, HP, MSI, Gigabyte, LG (laptops) · Samsung, Microsoft Surface (laptops, manual link) · SenaryTech · ASRock (desktop, manual link — site now blocked) |
 | LAN | Realtek (PCIe + USB), Intel, Acer (Killer/Realtek/Intel) |
 | WiFi | Intel, Realtek, Microsoft Update Catalog (non-Intel chips), ASUS Networking |
@@ -45,7 +46,7 @@ net_utils.py             — internet connectivity check, error classification
 
 checks/
   common.py            — shared helpers (find_device, safe_get_latest, report, ...)
-  bios.py, chipset.py, gpu.py, audio.py, network.py, laptop.py
+  bios.py, chipset.py, gpu.py, npu.py, audio.py, network.py, laptop.py
   registry.py           — CHECKS (registry of all checks) and CATEGORY_ORDER
 
 providers/              — one file per source (vendor/chip website)
