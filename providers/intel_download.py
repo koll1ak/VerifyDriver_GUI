@@ -131,6 +131,45 @@ class IntelDownloadCenterProvider(DriverProvider):
         return {"version": version, "date": date, "url": url}
 
 
+class IntelBluetoothProvider(DriverProvider):
+    """
+    Like IntelDownloadCenterProvider, but also extracts the per-chip
+    driver version list from the page's "Purpose" section (see
+    _parse_purpose_chip_versions), so check_intel_bluetooth can match
+    against the exact installed chip instead of just the overall
+    package version -- those differ (e.g. package 24.60.0 ships both
+    driver 24.60.0.4 and 24.40.11.1, for different chips).
+    """
+    name = "intel_bluetooth"
+
+    def __init__(self, download_id: str, slug: str):
+        self.download_id = download_id
+        self.slug = slug
+
+    def matches(self, device: dict) -> bool:
+        return False
+
+    def get_latest(self, device: dict = None) -> dict | None:
+        url = DOWNLOAD_URL_TEMPLATE.format(download_id=self.download_id, slug=self.slug)
+
+        session = requests.Session(impersonate="chrome")
+        resp = session.get(url, timeout=20)
+        resp.raise_for_status()
+
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        version = _find_meta(soup, "DownloadVersion")
+        date = _find_meta(soup, "lastModifieddate")
+
+        if version is None:
+            return None
+
+        return {
+            "version": version, "date": date, "url": url,
+            "chip_versions": _parse_purpose_chip_versions(soup),
+        }
+
+
 def get_current_intel_chipset_version() -> str | None:
     """The version of the installed Intel Chipset Device Software (from the Uninstall registry key)."""
     ps_command = (

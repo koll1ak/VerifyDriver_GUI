@@ -7,7 +7,9 @@ from providers.realtek_lan import (
 )
 from providers.realtek_wifi import RealtekWifiProvider
 from providers.realtek_usb_lan import RealtekUsbLanProvider
-from providers.intel_download import IntelDownloadCenterProvider, intel_download_url
+from providers.intel_download import (
+    IntelDownloadCenterProvider, IntelBluetoothProvider, find_chip_versions_for_device, intel_download_url,
+)
 from providers.ms_catalog import MsCatalogProvider, catalog_search_url
 
 INTEL_LAN_DOWNLOAD_ID = "15084"
@@ -207,12 +209,36 @@ def check_intel_bluetooth(devices, board, laptop):
         return None  # no Intel Bluetooth module in the system — silently skip
     current = device.get("DriverVersion")
 
-    provider = IntelDownloadCenterProvider(
-        download_id=INTEL_BLUETOOTH_DOWNLOAD_ID, slug=INTEL_BLUETOOTH_SLUG, name="intel_bluetooth"
-    )
+    provider = IntelBluetoothProvider(download_id=INTEL_BLUETOOTH_DOWNLOAD_ID, slug=INTEL_BLUETOOTH_SLUG)
     ok, latest = safe_get_latest("Intel Bluetooth", provider)
     if not ok:
         latest = None
+
+    if latest is not None and latest.get("chip_versions"):
+        # Bluetooth's own Windows name is typically generic (confirmed
+        # live: "Intel(R) Wireless Bluetooth(R)", no chip code) — fall
+        # back to the WiFi adapter's name on the same combo card, which
+        # does include it (e.g. "Intel(R) Wi-Fi 6 AX201 160MHz")
+        wifi_device = find_device_by_vendor_and_keywords(devices, "8086", ("WI-FI", "WIRELESS"))
+        chip_versions = find_chip_versions_for_device(
+            latest["chip_versions"],
+            device.get("DeviceName"),
+            wifi_device.get("DeviceName") if wifi_device else None,
+        )
+        if chip_versions:
+            # up to date if the installed version matches (or isn't
+            # older than) ANY version Intel lists for this chip — some
+            # chips are documented under two platform-specific versions
+            # (e.g. AX211 on Panther Lake vs. Wildcat Lake) and a
+            # Windows device name alone can't tell us which platform;
+            # only suggest an update, to the newest matched version, if
+            # the installed one is older than all of them
+            if any(no_downgrade_match(current, v) for v in chip_versions):
+                matched_version = current
+            else:
+                matched_version = max(chip_versions, key=lambda v: [int(p) for p in v.split(".")])
+            latest = {**latest, "version": matched_version}
+
     return report(
         "Intel Bluetooth", latest, current, comparator=no_downgrade_match,
         page_url=intel_download_url(INTEL_BLUETOOTH_DOWNLOAD_ID, INTEL_BLUETOOTH_SLUG),
