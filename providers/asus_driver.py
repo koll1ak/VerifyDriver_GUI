@@ -30,24 +30,16 @@ both cases.
 """
 
 import re
-from datetime import datetime
 
 import requests
 
 from providers.base import DriverProvider
 from providers.http_utils import DEFAULT_HEADERS
-from providers.asus_laptop_driver import detect_asus_os_id
+from providers.asus_laptop_driver import detect_asus_os_id, _parse_version_tuple
 
 API_URL = "https://www.asus.com/support/webapi/ProductV2/GetPDDrivers"
 
 _VERSION_IN_FILENAME_RE = re.compile(r"_V([\d.]+)_")
-
-
-def _parse_inf_date(date_str: str):
-    try:
-        return datetime.strptime(date_str, "%m-%d-%Y")
-    except (ValueError, TypeError):
-        return None
 
 
 class AsusDriverProvider(DriverProvider):
@@ -116,7 +108,7 @@ class AsusDriverProvider(DriverProvider):
             return None
 
         best_file, best_version = max(
-            candidates, key=lambda pair: _parse_inf_date(pair[0].get("INFDate", "")) or datetime.min
+            candidates, key=lambda pair: _parse_version_tuple(pair[1]) or ()
         )
 
         # DownloadUrl is either an absolute link or a path relative to

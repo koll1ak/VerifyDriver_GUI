@@ -29,7 +29,6 @@ The date is INFDate in MM-DD-YYYY format.
 
 import re
 import sys
-from datetime import datetime
 
 import requests
 
@@ -70,10 +69,22 @@ def detect_asus_os_id() -> str:
 _VERSION_IN_FILENAME_RE = re.compile(r"_V([\d.]+)_")
 
 
-def _parse_inf_date(date_str: str):
+def _parse_version_tuple(v: str):
+    """
+    "6.0.9050.1" -> (6, 0, 9050, 1), for choosing the "best" candidate by
+    version number. Ranking used to be by INFDate instead — dropped
+    after confirming live (ASUS PRIME H310M-R R2.0) that INFDate is
+    unreliable: two candidate files for the same board had an empty
+    INFDate each, and the one non-empty INFDate present ("05/13/2018")
+    belonged to a numerically OLDER version than the others, contradicting
+    both the version number and the date baked into that same file's own
+    name (2019) — INFDate looks like it can be the driver's original
+    authoring date, not this OEM release's date, so it isn't a trustworthy
+    "latest" signal here.
+    """
     try:
-        return datetime.strptime(date_str, "%m-%d-%Y")
-    except (ValueError, TypeError):
+        return tuple(int(p) for p in v.split("."))
+    except (ValueError, AttributeError):
         return None
 
 
@@ -140,7 +151,7 @@ class AsusLaptopDriverProvider(DriverProvider):
             return None
 
         best_file, best_version = max(
-            candidates, key=lambda pair: _parse_inf_date(pair[0].get("INFDate", "")) or datetime.min
+            candidates, key=lambda pair: _parse_version_tuple(pair[1]) or ()
         )
 
         # DownloadUrl is either an absolute link (e.g. an MS Store page)
