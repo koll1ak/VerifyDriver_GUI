@@ -99,7 +99,10 @@ def check_intel_chipset(devices, board, laptop):
                 f"https://www.intel.com/content/www/us/en/download/"
                 f"{INTEL_CHIPSET_DOWNLOAD_ID}/{INTEL_CHIPSET_SLUG}.html"
             )
-            return report("Intel Chipset", db_latest, current, comparator=no_downgrade_match)
+            return report(
+                "Intel Chipset", db_latest, current, comparator=no_downgrade_match,
+                current_date=intel_platform_device.get("DriverDate"),
+            )
 
     # FALLBACK path: the official Intel page, but only the version of the
     # package as a whole — comparing against the installed version is
