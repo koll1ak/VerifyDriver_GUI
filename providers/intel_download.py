@@ -38,7 +38,7 @@ def _find_meta(soup, name: str) -> str | None:
     return tag.get("content", "").strip() if tag and tag.get("content") else None
 
 
-_PURPOSE_LI_RE = re.compile(r"^Driver version\s+(\S+)\s*:\s*For\s+(.+)$", re.IGNORECASE)
+_PURPOSE_LI_RE = re.compile(r"^Driver version\s+([\d.]+)\s*:\s*For\s+(.+)$", re.IGNORECASE)
 
 
 def _parse_purpose_chip_versions(soup: BeautifulSoup) -> list[dict]:
@@ -54,12 +54,17 @@ def _parse_purpose_chip_versions(soup: BeautifulSoup) -> list[dict]:
     same silicon paired with different platforms, e.g. AX211 on Panther
     Lake vs. Wildcat Lake) -- callers decide how to handle that.
 
-    Scoped to the "Detailed Description" block (found via its <h2>
-    heading) rather than the whole page, so an unrelated "Driver
-    version ... : For ..." string elsewhere can't leak in. Returns []
-    if the page doesn't have this section at all -- callers already
-    treat an empty list as "no chip-specific data available" and fall
-    back to the package-level version.
+    Starts searching from the "Detailed Description" <h2> heading (via
+    find_next("div")) as a best-effort scope narrowing -- this is NOT a
+    strict guarantee that only that section's <div> is scanned, just
+    "the next div in document order after the heading", which happens
+    to be the right container on the real page today. The actual
+    protection against picking up unrelated "Driver version ... : For
+    ..." strings elsewhere on the page is the _PURPOSE_LI_RE regex match
+    on each <li>'s text below. Returns [] if the page doesn't have this
+    section at all -- callers already treat an empty list as "no
+    chip-specific data available" and fall back to the package-level
+    version.
     """
     heading = soup.find(lambda tag: tag.name == "h2" and tag.get_text(strip=True) == "Detailed Description")
     if heading is None:

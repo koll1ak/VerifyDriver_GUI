@@ -1,6 +1,6 @@
 from checks.common import (
-    find_device, find_device_by_vendor_and_keywords, safe_get_latest, report, parse_flexible_date,
-    no_downgrade_match, build_result,
+    find_device, find_device_by_vendor_and_keywords, find_intel_wifi_device, safe_get_latest, report,
+    parse_flexible_date, no_downgrade_match, build_result, _parse_version_tuple,
 )
 from providers.realtek_lan import (
     RealtekLanProvider, realtek_versions_match, realtek_ndis_versions_match, detect_realtek_lan_variant,
@@ -178,7 +178,7 @@ def check_intel_lan(devices, board, laptop):
 
 
 def check_intel_wifi(devices, board, laptop):
-    device = find_device_by_vendor_and_keywords(devices, "8086", ("WI-FI", "WIRELESS"))
+    device = find_intel_wifi_device(devices)
     if device is None:
         return None  # no Intel WiFi card in the system — silently skip
     current = device.get("DriverVersion")
@@ -219,7 +219,7 @@ def check_intel_bluetooth(devices, board, laptop):
         # live: "Intel(R) Wireless Bluetooth(R)", no chip code) — fall
         # back to the WiFi adapter's name on the same combo card, which
         # does include it (e.g. "Intel(R) Wi-Fi 6 AX201 160MHz")
-        wifi_device = find_device_by_vendor_and_keywords(devices, "8086", ("WI-FI", "WIRELESS"))
+        wifi_device = find_intel_wifi_device(devices)
         chip_versions = find_chip_versions_for_device(
             latest["chip_versions"],
             device.get("DeviceName"),
@@ -236,7 +236,7 @@ def check_intel_bluetooth(devices, board, laptop):
             if any(no_downgrade_match(current, v) for v in chip_versions):
                 matched_version = current
             else:
-                matched_version = max(chip_versions, key=lambda v: [int(p) for p in v.split(".")])
+                matched_version = max(chip_versions, key=lambda v: _parse_version_tuple(v) or ())
             latest = {**latest, "version": matched_version}
 
     return report(

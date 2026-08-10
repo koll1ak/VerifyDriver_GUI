@@ -177,6 +177,18 @@ def find_device_driver_version(devices, vendor_id: str, name_keywords):
     return device.get("DriverVersion") if device else None
 
 
+def find_intel_wifi_device(devices):
+    """
+    Looks among devices for the Intel WiFi adapter (vendor 8086, name
+    containing "WI-FI"/"WIRELESS"). Shared by check_intel_wifi (its own
+    device) and check_intel_bluetooth (as a fallback source for the chip
+    code, since Bluetooth's own Windows device name is typically generic)
+    so both stay in sync instead of drifting if one's keyword list is
+    edited without the other.
+    """
+    return find_device_by_vendor_and_keywords(devices, "8086", ("WI-FI", "WIRELESS"))
+
+
 def laptop_model_if_vendor(laptop: dict, vendor_keyword: str, model_field: str):
     """
     Shared pattern for vendor-specific laptop checks: if this is a
