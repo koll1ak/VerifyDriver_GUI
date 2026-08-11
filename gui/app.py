@@ -61,6 +61,25 @@ class _RowInfo(NamedTuple):
 STATUS_LABEL_WIDTH = len("Scanning")
 
 
+def _fit_text(text, max_width, measure):
+    """
+    Shrinks text to fit max_width (in whatever unit `measure` returns,
+    normally pixels), appending "..." once it doesn't already fit. The
+    first cut removes 2 characters; every cut after that removes 1 --
+    matches the ellipsis behavior of Driver Store Explorer (RAPR), which
+    this app's column resizing is modeled on.
+    """
+    if measure(text) <= max_width:
+        return text
+    candidate = text[:-2]
+    while candidate:
+        fitted = candidate + "..."
+        if measure(fitted) <= max_width:
+            return fitted
+        candidate = candidate[:-1]
+    return "..."
+
+
 class App:
     def __init__(self):
         _enable_windows_dpi_awareness()
