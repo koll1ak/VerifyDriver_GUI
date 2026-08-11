@@ -24,6 +24,12 @@ BASE_WINDOW_HEIGHT = 600
 # same idea for the Treeview's column widths (see _build_widgets)
 BASE_COLUMN_WIDTHS = {"#0": 280, "current": 170, "available": 170, "status": 220}
 
+# empirical padding ttk.Treeview reserves inside a cell on each side;
+# the #0 column additionally reserves room for the expand/collapse
+# arrow and one indent level, so it gets extra margin
+CELL_WIDTH_MARGIN = 16
+TREE_COLUMN_EXTRA_MARGIN = 20
+
 
 def _enable_windows_dpi_awareness():
     """
@@ -92,6 +98,12 @@ class App:
         self._rows: dict[str, _RowInfo] = {}
         self._row_counter = 0
         self._hovered_row = None
+        # full, untruncated text per tree item id and column id ("#0"
+        # plus the value columns) -- every re-fit recomputes from these,
+        # never from an already-truncated string, so widening a column
+        # restores text instead of only ever removing more
+        self._full_text: dict[str, dict[str, str]] = {}
+        self._full_headers: dict[str, str] = {}
 
         self._build_widgets()
 
@@ -139,10 +151,14 @@ class App:
 
         columns = ("current", "available", "status")
         self.tree = ttk.Treeview(tree_frame, columns=columns, show="tree headings")
-        self.tree.heading("#0", text="Device")
-        self.tree.heading("current", text="Current Driver version")
-        self.tree.heading("available", text="Available Driver version")
-        self.tree.heading("status", text="Status")
+        self._full_headers = {
+            "#0": "Device",
+            "current": "Current Driver version",
+            "available": "Available Driver version",
+            "status": "Status",
+        }
+        for col, text in self._full_headers.items():
+            self.tree.heading(col, text=text)
         for col, base_width in BASE_COLUMN_WIDTHS.items():
             self.tree.column(col, width=round(base_width * self._scale), anchor="w")
 
@@ -168,6 +184,12 @@ class App:
         self.tree.tag_configure("update", foreground="#c0392b", font=(family, size, "underline"))
         self.tree.tag_configure("linked", foreground="#1a73e8")
         self.tree.tag_configure("error", foreground="#c0392b")
+        # fonts used to measure text when fitting it to a column's current
+        # width (see _refit_column) -- cached once rather than re-resolved
+        # per row/column
+        self._default_font = default_font
+        self._category_font = tkfont.Font(family=family, size=size, weight="bold")
+        self._heading_font = tkfont.nametofont("TkHeadingFont")
         # hover highlight for any row with a link — only sets background,
         # so it layers on top of the "update"/"linked"/"error" foreground
         # color instead of replacing it
@@ -176,6 +198,15 @@ class App:
         self.tree.bind("<Double-1>", self._on_row_double_click)
         self.tree.bind("<Motion>", self._on_tree_motion)
         self.tree.bind("<Leave>", self._on_tree_leave)
+        # live text truncation while dragging a column separator -- add="+"
+        # so Tk's own column-resize handling (which runs first on the same
+        # event) is untouched; by the time our handler runs, tree.column()
+        # already reflects the in-progress width
+        self.tree.bind("<B1-Motion>", self._on_tree_column_resize, add="+")
+        self.tree.bind("<ButtonRelease-1>", self._on_tree_column_resize, add="+")
+        # window-resize-driven column stretching -- after_idle so Tk has
+        # finished redistributing stretched column widths before we read them
+        self.tree.bind("<Configure>", self._on_tree_configure, add="+")
 
         # a Text widget (not a Label) specifically so only the URL portion
         # of the line is a click/hover zone, not the whole sentence
@@ -188,6 +219,41 @@ class App:
         self.drivers_link.tag_configure("link", foreground="#1a73e8", underline=True)
         self.drivers_link.tag_configure("hover", background="#dbe9fd")
         self._drivers_link_range = None
+
+    # --- column text fitting --------------------------------------------
+
+    def _font_for_item(self, iid):
+        tags = self.tree.item(iid, "tags")
+        return self._category_font if "category" in tags else self._default_font
+
+    def _refit_column(self, col_id):
+        width = self.tree.column(col_id, "width")
+        margin = CELL_WIDTH_MARGIN + (TREE_COLUMN_EXTRA_MARGIN if col_id == "#0" else 0)
+        budget = max(width - margin, 0)
+
+        header_text = self._full_headers[col_id]
+        fitted_header = _fit_text(header_text, budget, self._heading_font.measure)
+        self.tree.heading(col_id, text=fitted_header)
+
+        for iid, full in self._full_text.items():
+            if col_id not in full:
+                continue
+            font = self._font_for_item(iid)
+            fitted = _fit_text(full[col_id], budget, font.measure)
+            if col_id == "#0":
+                self.tree.item(iid, text=fitted)
+            else:
+                self.tree.set(iid, col_id, fitted)
+
+    def _refit_all_columns(self):
+        for col_id in ("#0", "current", "available", "status"):
+            self._refit_column(col_id)
+
+    def _on_tree_column_resize(self, _event):
+        self._refit_all_columns()
+
+    def _on_tree_configure(self, _event):
+        self.root.after_idle(self._refit_all_columns)
 
     # --- scan lifecycle -------------------------------------------------
 
@@ -273,11 +339,13 @@ class App:
             if not category_results and not category_errors:
                 continue
             category_iid = self._category_iid(category)
+            self._full_text[category_iid] = {"#0": category}
             self.tree.insert("", "end", iid=category_iid, text=category, open=True, tags=("category",))
             for result in category_results:
                 self._insert_result_row(category_iid, result)
             for message in category_errors:
                 self._insert_error_row(category_iid, message)
+        self._refit_all_columns()
 
     def _insert_result_row(self, category_iid, result):
         # update_line is the single source of truth for "this row has an
@@ -295,6 +363,12 @@ class App:
             tags = ()
 
         iid = self._next_row_iid()
+        self._full_text[iid] = {
+            "#0": result.device,
+            "current": result.current,
+            "available": result.available,
+            "status": result.status,
+        }
         self.tree.insert(
             category_iid, "end", iid=iid, text=result.device,
             values=(result.current, result.available, result.status), tags=tags,
@@ -304,6 +378,9 @@ class App:
     def _insert_error_row(self, category_iid, message):
         iid = self._next_row_iid()
         tags = ("error",)
+        self._full_text[iid] = {
+            "#0": "(error)", "current": "—", "available": "—", "status": f"Error: {message}",
+        }
         self.tree.insert(
             category_iid, "end", iid=iid, text="(error)",
             values=("—", "—", f"Error: {message}"), tags=tags,
@@ -313,6 +390,7 @@ class App:
     def _clear_tree(self):
         self.tree.delete(*self.tree.get_children())
         self._rows.clear()
+        self._full_text.clear()
         self._row_counter = 0
         self._hovered_row = None
 
