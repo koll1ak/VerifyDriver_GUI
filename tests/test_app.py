@@ -27,6 +27,17 @@ class FitTextTests(unittest.TestCase):
     def test_impossible_width_collapses_to_bare_ellipsis(self):
         self.assertEqual(_fit_text("Hello", 0, len), "...")
 
+    def test_first_cut_removes_two_characters_not_one(self):
+        # A real font makes "..." far narrower than three letters, which is
+        # the only regime where "cut 2 first" differs from "cut 1 at a
+        # time" -- len-based measures can't distinguish the two algorithms
+        # (a period costs the same as a letter under len), so this uses a
+        # measure where "." is cheap and letters are expensive.
+        proportional = lambda s: sum(1 if c == "." else 10 for c in s)
+        # "Statu..." (53) would fit under a naive 1-char-at-a-time cut, but
+        # the first cut always removes 2, landing on "Stat..." instead.
+        self.assertEqual(_fit_text("Status", 53, proportional), "Stat...")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -226,7 +226,7 @@ class App:
         tags = self.tree.item(iid, "tags")
         return self._category_font if "category" in tags else self._default_font
 
-    def _refit_column(self, col_id):
+    def _refit_column(self, col_id, fonts):
         width = self.tree.column(col_id, "width")
         margin = CELL_WIDTH_MARGIN + (TREE_COLUMN_EXTRA_MARGIN if col_id == "#0" else 0)
         budget = max(width - margin, 0)
@@ -238,7 +238,7 @@ class App:
         for iid, full in self._full_text.items():
             if col_id not in full:
                 continue
-            font = self._font_for_item(iid)
+            font = fonts[iid]
             fitted = _fit_text(full[col_id], budget, font.measure)
             if col_id == "#0":
                 self.tree.item(iid, text=fitted)
@@ -246,8 +246,14 @@ class App:
                 self.tree.set(iid, col_id, fitted)
 
     def _refit_all_columns(self):
-        for col_id in ("#0", "current", "available", "status"):
-            self._refit_column(col_id)
+        # resolved once per row per full refit pass (not once per row per
+        # column) since a row's font can't change between columns within
+        # the same pass -- this runs on every mouse-move sample while
+        # dragging a column separator, so avoiding the redundant per-
+        # column lookup matters on that hot path
+        fonts = {iid: self._font_for_item(iid) for iid in self._full_text}
+        for col_id in self._full_headers:
+            self._refit_column(col_id, fonts)
 
     def _on_tree_column_resize(self, _event):
         self._refit_all_columns()
@@ -363,27 +369,29 @@ class App:
             tags = ()
 
         iid = self._next_row_iid()
-        self._full_text[iid] = {
+        full = {
             "#0": result.device,
             "current": result.current,
             "available": result.available,
             "status": result.status,
         }
+        self._full_text[iid] = full
         self.tree.insert(
-            category_iid, "end", iid=iid, text=result.device,
-            values=(result.current, result.available, result.status), tags=tags,
+            category_iid, "end", iid=iid, text=full["#0"],
+            values=(full["current"], full["available"], full["status"]), tags=tags,
         )
         self._rows[iid] = _RowInfo(tags, result.url)
 
     def _insert_error_row(self, category_iid, message):
         iid = self._next_row_iid()
         tags = ("error",)
-        self._full_text[iid] = {
+        full = {
             "#0": "(error)", "current": "—", "available": "—", "status": f"Error: {message}",
         }
+        self._full_text[iid] = full
         self.tree.insert(
-            category_iid, "end", iid=iid, text="(error)",
-            values=("—", "—", f"Error: {message}"), tags=tags,
+            category_iid, "end", iid=iid, text=full["#0"],
+            values=(full["current"], full["available"], full["status"]), tags=tags,
         )
         self._rows[iid] = _RowInfo(tags, None)
 
