@@ -86,22 +86,17 @@ class MsCatalogProvider(DriverProvider):
 
             if best_date is None or date > best_date:
                 best_date = date
-                # each row's id is "<update GUID>_R0" — strip the suffix to
-                # get the GUID and link straight to that update's detail
-                # page (ScopedViewInline.aspx), confirmed against the
-                # catalog's own goToDetails() JS. Falls back to the generic
-                # search page if the row has no id (markup change).
-                row_id = row.get("id", "")
-                update_id = row_id.split("_")[0] if row_id else None
-                detail_url = (
-                    f"https://www.catalog.update.microsoft.com/ScopedViewInline.aspx?updateid={update_id}"
-                    if update_id else SEARCH_URL + f"?q={self.query}"
-                )
                 best = {
                     "version": version,
                     "date": date_str,
                     "title": title,
-                    "url": detail_url,
+                    # Link to the search results page (page 0), not the
+                    # per-update ScopedViewInline.aspx detail page: the
+                    # detail page's Download button stays hidden until an
+                    # async JS check runs, which doesn't fire when the page
+                    # is opened directly from a bare URL. The results page
+                    # renders its Download buttons inline, no JS needed.
+                    "url": catalog_search_url(self.query),
                 }
 
         return best
