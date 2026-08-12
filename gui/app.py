@@ -159,8 +159,16 @@ class App:
         }
         for col, text in self._full_headers.items():
             self.tree.heading(col, text=text, anchor="w")
+        # only the last column stretches to absorb window-resize slack --
+        # every other column defaults to stretch=True too, which makes Tk
+        # steal width from the *next* column when you drag a separator
+        # instead of just growing the one you're dragging
+        last_col = next(reversed(BASE_COLUMN_WIDTHS))
         for col, base_width in BASE_COLUMN_WIDTHS.items():
-            self.tree.column(col, width=round(base_width * self._scale), anchor="w")
+            self.tree.column(
+                col, width=round(base_width * self._scale), anchor="w",
+                stretch=col == last_col,
+            )
 
         scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrollbar.set)
@@ -180,15 +188,15 @@ class App:
         # text on a high-DPI display
         style = ttk.Style()
         style.configure("Treeview", rowheight=round(default_font.metrics("linespace") * 1.4))
-        self.tree.tag_configure("category", font=(family, size, "bold"))
+        self.tree.tag_configure("category", foreground="#1a73e8", font=(family, size))
         self.tree.tag_configure("update", foreground="#c0392b", font=(family, size, "underline"))
-        self.tree.tag_configure("linked", foreground="#1a73e8")
+        self.tree.tag_configure("linked", foreground="black")
         self.tree.tag_configure("error", foreground="#c0392b")
         # fonts used to measure text when fitting it to a column's current
         # width (see _refit_column) -- cached once rather than re-resolved
         # per row/column
         self._default_font = default_font
-        self._category_font = tkfont.Font(family=family, size=size, weight="bold")
+        self._category_font = tkfont.Font(family=family, size=size)
         self._heading_font = tkfont.nametofont("TkHeadingFont")
         # hover highlight for any row with a link — only sets background,
         # so it layers on top of the "update"/"linked"/"error" foreground
