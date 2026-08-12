@@ -6,7 +6,10 @@ separate official page, see providers/intel_download.py).
 
     GET https://www.catalog.update.microsoft.com/Search.aspx?q=<query>
 
-The page is server-rendered (a plain HTML table), no JS needed.
+The search page is server-rendered (a plain HTML table), no JS needed.
+The direct CDN download link is resolved with a second request — see
+_resolve_download_url — mirroring what the site's own Download button
+does under the hood.
 """
 
 import re
@@ -19,11 +22,32 @@ from providers.base import DriverProvider
 from providers.http_utils import DEFAULT_HEADERS
 
 SEARCH_URL = "https://www.catalog.update.microsoft.com/Search.aspx"
+DOWNLOAD_DIALOG_URL = "https://www.catalog.update.microsoft.com/DownloadDialog.aspx"
 
 
 def catalog_search_url(query: str) -> str:
     from urllib.parse import quote
     return f"{SEARCH_URL}?q={quote(query)}"
+
+
+def _resolve_download_url(update_id: str) -> str | None:
+    """
+    The catalog site itself gets the real .cab/.msu CDN link by POSTing
+    the update's GUID here (this is what its "Download" button does under
+    the hood) — the response is a JS snippet assigning
+    downloadInformation[0].files[N].url, not a JSON API. Confirmed live;
+    no auth/session needed, the CDN links are public.
+    """
+    body = f'updateIDs=[{{"size":0,"languages":"","uidInfo":"{update_id}","updateID":"{update_id}"}}]'
+    resp = requests.post(
+        DOWNLOAD_DIALOG_URL,
+        data=body,
+        headers={**DEFAULT_HEADERS, "Content-Type": "application/x-www-form-urlencoded"},
+        timeout=20,
+    )
+    resp.raise_for_status()
+    urls = re.findall(r"downloadInformation\[0\]\.files\[\d+\]\.url = '([^']+)'", resp.text)
+    return urls[0] if urls else None
 
 
 class MsCatalogProvider(DriverProvider):
@@ -86,18 +110,32 @@ class MsCatalogProvider(DriverProvider):
 
             if best_date is None or date > best_date:
                 best_date = date
+                # row id is "<update GUID>_R0" — strip the suffix to get
+                # the GUID for the DownloadDialog.aspx lookup below.
+                row_id = row.get("id", "")
+                update_id = row_id.split("_")[0] if row_id else None
                 best = {
                     "version": version,
                     "date": date_str,
                     "title": title,
-                    # Link to the search results page (page 0), not the
-                    # per-update ScopedViewInline.aspx detail page: the
-                    # detail page's Download button stays hidden until an
-                    # async JS check runs, which doesn't fire when the page
-                    # is opened directly from a bare URL. The results page
-                    # renders its Download buttons inline, no JS needed.
-                    "url": catalog_search_url(self.query),
+                    "update_id": update_id,
                 }
+
+        if best is None:
+            return None
+
+        # Resolve straight to the CDN file link so opening it starts the
+        # download immediately, same as the NVIDIA provider's DownloadURL —
+        # falls back to the search results page (still has a working
+        # Download button, just not a one-click one) if that lookup fails.
+        download_url = None
+        if best["update_id"]:
+            try:
+                download_url = _resolve_download_url(best["update_id"])
+            except requests.RequestException:
+                download_url = None
+        best["url"] = download_url or catalog_search_url(self.query)
+        del best["update_id"]
 
         return best
 
