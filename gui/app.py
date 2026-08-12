@@ -158,7 +158,7 @@ class App:
             "status": "Status",
         }
         for col, text in self._full_headers.items():
-            self.tree.heading(col, text=text)
+            self.tree.heading(col, text=text, anchor="w")
         for col, base_width in BASE_COLUMN_WIDTHS.items():
             self.tree.column(col, width=round(base_width * self._scale), anchor="w")
 
