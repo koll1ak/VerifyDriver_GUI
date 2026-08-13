@@ -1,6 +1,6 @@
 from checks.common import (
     find_device, find_device_by_vendor_and_keywords, find_intel_wifi_device, safe_get_latest, report,
-    parse_flexible_date, no_downgrade_match, build_result, _parse_version_tuple,
+    parse_flexible_date, no_downgrade_match, build_result, _parse_version_tuple, resolve_device_name,
 )
 from providers.realtek_lan import (
     RealtekLanProvider, realtek_versions_match, realtek_ndis_versions_match, detect_realtek_lan_variant,
@@ -55,7 +55,7 @@ def check_realtek_lan(devices, board, laptop):
     ok, latest = safe_get_latest("Realtek LAN", provider)
     if not ok:
         return report(
-            "Realtek LAN", None, current, page_url=REALTEK_LAN_PAGE_URL, device_name=device.get("DeviceName"),
+            "Realtek LAN", None, current, page_url=REALTEK_LAN_PAGE_URL, device_name=resolve_device_name(device),
             current_date=device.get("DriverDate"),
         )
 
@@ -96,19 +96,19 @@ def check_realtek_lan(devices, board, laptop):
                     current_date=device.get("DriverDate"), available_date=latest.get("date"),
                     status="Possibly outdated (by date)",
                     url="https://www.realtek.com/Download/List?cate_id=584",
-                    device_name=device.get("DeviceName"),
+                    device_name=resolve_device_name(device),
                 )
             display_line = f"[Realtek LAN] up to date by date (installed driver from {installed_date.date()})"
             return build_result(
                 "Realtek LAN", display_line, current=current, available=latest["version"],
                 current_date=device.get("DriverDate"), available_date=latest.get("date"),
                 status="Up to date (by date)",
-                url=REALTEK_LAN_PAGE_URL, device_name=device.get("DeviceName"),
+                url=REALTEK_LAN_PAGE_URL, device_name=resolve_device_name(device),
             )
         current = None  # couldn't compare by either version or date
 
     return report(
-        "Realtek LAN", latest, current, comparator=comparator, device_name=device.get("DeviceName"),
+        "Realtek LAN", latest, current, comparator=comparator, device_name=resolve_device_name(device),
         current_date=device.get("DriverDate"),
     )
 
@@ -130,7 +130,7 @@ def check_realtek_wifi(devices, board, laptop):
     if not ok:
         latest = None
     return report(
-        "Realtek WiFi", latest, current=None, page_url=REALTEK_WIFI_PAGE_URL, device_name=device.get("DeviceName"),
+        "Realtek WiFi", latest, current=None, page_url=REALTEK_WIFI_PAGE_URL, device_name=resolve_device_name(device),
     )
 
 
@@ -174,7 +174,7 @@ def check_realtek_usb_lan(devices, board, laptop):
             latest = None
         return report(
             "Realtek USB LAN", latest, current=None, page_url=REALTEK_USB_LAN_PAGE_URL,
-            device_name=device.get("DeviceName"),
+            device_name=resolve_device_name(device),
         )
 
     provider = RealtekUsbLanProvider(match_substrings=match_substrings)
@@ -183,7 +183,7 @@ def check_realtek_usb_lan(devices, board, laptop):
         latest = None
     return report(
         "Realtek USB LAN", latest, current, comparator=comparator, page_url=REALTEK_USB_LAN_PAGE_URL,
-        device_name=device.get("DeviceName"), current_date=device.get("DriverDate"),
+        device_name=resolve_device_name(device), current_date=device.get("DriverDate"),
     )
 
 
@@ -206,7 +206,7 @@ def check_intel_lan(devices, board, laptop):
     return report(
         "Intel LAN", latest, current=None,
         page_url=intel_download_url(INTEL_LAN_DOWNLOAD_ID, INTEL_LAN_SLUG),
-        device_name=device.get("DeviceName"),
+        device_name=resolve_device_name(device),
     )
 
 
@@ -229,7 +229,7 @@ def check_intel_wifi(devices, board, laptop):
     return report(
         "Intel WiFi", latest, current, comparator=no_downgrade_match,
         page_url=intel_download_url(INTEL_WIFI_DOWNLOAD_ID, INTEL_WIFI_SLUG),
-        device_name=device.get("DeviceName"), current_date=device.get("DriverDate"),
+        device_name=resolve_device_name(device), current_date=device.get("DriverDate"),
     )
 
 
@@ -275,7 +275,7 @@ def check_intel_bluetooth(devices, board, laptop):
     return report(
         "Intel Bluetooth", latest, current, comparator=no_downgrade_match,
         page_url=intel_download_url(INTEL_BLUETOOTH_DOWNLOAD_ID, INTEL_BLUETOOTH_SLUG),
-        device_name=device.get("DeviceName"), current_date=device.get("DriverDate"),
+        device_name=resolve_device_name(device), current_date=device.get("DriverDate"),
     )
 
 
@@ -293,7 +293,12 @@ def check_bluetooth_via_windows_update(devices, board, laptop):
     if bt_device is None:
         return None  # Intel is already covered by check_intel_bluetooth, no other Bluetooth modules
 
-    device_name = bt_device.get("DeviceName", "")
+    # resolved first, not just at display time -- this also becomes the
+    # MS Catalog search query and the CLI label below, so a device stuck
+    # on the generic driver searches for its real vendor name instead of
+    # a useless "Generic Bluetooth Adapter" (confirmed live: this exact
+    # scenario produced a real incident during testing)
+    device_name = resolve_device_name(bt_device)
     current = bt_device.get("DriverVersion")
 
     provider = MsCatalogProvider(query=device_name, name="bluetooth_windows_update")
@@ -327,7 +332,9 @@ def check_wifi_via_windows_update(devices, board, laptop):
     if wifi_device is None:
         return None  # Intel is already covered by check_intel_wifi, no other WiFi chips
 
-    device_name = wifi_device.get("DeviceName", "")
+    # resolved first, not just at display time -- see the identical note
+    # in check_bluetooth_via_windows_update
+    device_name = resolve_device_name(wifi_device)
     current = wifi_device.get("DriverVersion")
 
     provider = MsCatalogProvider(query=device_name, name="wifi_windows_update")

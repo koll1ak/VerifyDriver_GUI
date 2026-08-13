@@ -1,6 +1,6 @@
 import re
 
-from checks.common import find_device, safe_get_latest, report, no_downgrade_match
+from checks.common import find_device, safe_get_latest, report, no_downgrade_match, resolve_device_name
 from providers.intel_download import IntelDownloadCenterProvider, intel_download_url
 
 INTEL_NPU_DOWNLOAD_ID = "794734"
@@ -41,5 +41,5 @@ def check_intel_npu(devices, board, laptop):
     return report(
         "Intel NPU", latest, current, comparator=no_downgrade_match,
         page_url=intel_download_url(INTEL_NPU_DOWNLOAD_ID, INTEL_NPU_SLUG),
-        device_name=device.get("DeviceName"), current_date=device.get("DriverDate"),
+        device_name=resolve_device_name(device), current_date=device.get("DriverDate"),
     )

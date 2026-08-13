@@ -4,7 +4,7 @@ from net_utils import classify_error
 from scanner import get_devices_by_id_pattern
 from checks.common import (
     find_device, find_device_driver_version, find_device_by_vendor_and_keywords, safe_get_latest, report,
-    no_downgrade_match, overall_drivers_page_url, manual_check_unavailable,
+    no_downgrade_match, overall_drivers_page_url, manual_check_unavailable, resolve_device_name,
 )
 from providers.msi_driver import MsiDriverProvider, get_installed_inf_version, get_installed_inf_date
 from providers.gigabyte_driver import GigabyteDriverProvider
@@ -45,15 +45,26 @@ def _audio_display_name(device):
     Windows' generic inbox USB Audio class driver reports a bare class
     name like "USB Audio 2.0" (confirmed live: Manufacturer field shows
     "Microsoft", not the actual chip vendor) instead of a vendor-branded
-    one — prefix the known chip vendor (from VendorID) when the name
-    doesn't already mention it, so the table still shows which vendor's
-    chip this actually is. Display only — callers that also use the
-    device name as a search query (e.g. the Windows Update Catalog
-    lookup) must keep using the raw, unprefixed name for that.
+    one. Display only — callers that also use the device name as a
+    search query (e.g. the Windows Update Catalog lookup) must keep
+    using the raw, unprefixed name for that.
+
+    Tries the shared hardware-ID-database resolution first (see
+    checks.common.resolve_device_name), for devices truly stuck on
+    Windows' generic/inbox driver (the exact placeholder DriverDate) —
+    if that finds something, it's used as-is. Otherwise falls back to
+    the original vendor-prefix heuristic below, unchanged: prefix the
+    known chip vendor (from VendorID) when the name doesn't already
+    mention it, so the table still shows which vendor's chip this is,
+    even for names resolve_device_name's placeholder-date gate doesn't
+    catch.
     """
     if not device:
         return None
     name = device.get("DeviceName", "")
+    resolved = resolve_device_name(device)
+    if resolved != name:
+        return resolved
     vendor = _AUDIO_CHIP_VENDOR_NAMES.get(device.get("VendorID"))
     if vendor and name and vendor.upper() not in name.upper():
         return f"{vendor} {name}"
@@ -293,5 +304,5 @@ def check_senary_audio(devices, board, laptop):
     # number, different from what's on the SenaryTech site — comparison
     # isn't reliable
     return report(
-        "Senary Audio", latest, current=None, page_url=SENARY_PAGE_URL, device_name=device.get("DeviceName"),
+        "Senary Audio", latest, current=None, page_url=SENARY_PAGE_URL, device_name=resolve_device_name(device),
     )

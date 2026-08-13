@@ -5,7 +5,7 @@ from scanner import get_devices_by_id_pattern
 from checks.common import (
     find_device, find_device_driver_version, find_device_by_vendor_and_keywords, laptop_model_if_vendor,
     safe_get_latest, report, no_downgrade_match, overall_drivers_page_url, manual_result, manual_check_unavailable,
-    build_result,
+    build_result, resolve_device_name,
 )
 from providers.dell_support import dell_drivers_url
 from providers.acer_support import AcerSupportProvider
@@ -119,7 +119,7 @@ def check_dell_audio(devices, board, laptop):
     current = audio_device.get("DriverVersion") if audio_device else None
     current_date = audio_device.get("DriverDate") if audio_device else None
     return manual_check_unavailable(
-        "Dell Audio", url, device_name=audio_device.get("DeviceName") if audio_device else None,
+        "Dell Audio", url, device_name=resolve_device_name(audio_device) if audio_device else None,
         current=current, current_date=current_date,
     )
 

@@ -1,4 +1,4 @@
-from checks.common import find_device, find_device_by_vendor_and_keywords, safe_get_latest, report
+from checks.common import find_device, find_device_by_vendor_and_keywords, safe_get_latest, report, resolve_device_name
 from providers.nvidia import NvidiaProvider, get_current_nvidia_version
 from providers.amd_gpu import AmdGpuProvider
 from providers.intel_download import IntelDownloadCenterProvider, intel_download_url
@@ -47,7 +47,7 @@ def check_nvidia(devices, board, laptop):
         latest = None
     return report(
         "NVIDIA", latest, get_current_nvidia_version(), page_url=NVIDIA_DRIVERS_PAGE_URL,
-        device_name=device.get("DeviceName"), current_date=device.get("DriverDate"),
+        device_name=resolve_device_name(device), current_date=device.get("DriverDate"),
     )
 
 
@@ -73,7 +73,7 @@ def check_amd_gpu(devices, board, laptop):
     # sees), we compare directly; if not, the version stayed the
     # marketing one ("26.7.1"), and comparing against it isn't safe
     current = amd_gpu_device.get("DriverVersion") if latest and latest.get("comparable_with_windows_version") else None
-    amd_device_name = amd_gpu_device.get("DeviceName") or ""
+    amd_device_name = resolve_device_name(amd_gpu_device)
     if _is_integrated_amd_gpu(amd_device_name):
         amd_device_name += " (Integrated)"
     return report(
@@ -105,5 +105,5 @@ def check_intel_gpu(devices, board, laptop):
     return report(
         "Intel GPU", latest, current,
         page_url=intel_download_url(INTEL_GPU_DOWNLOAD_ID, INTEL_GPU_SLUG),
-        device_name=device.get("DeviceName"), current_date=device.get("DriverDate"),
+        device_name=resolve_device_name(device), current_date=device.get("DriverDate"),
     )
