@@ -5,7 +5,7 @@ from unittest.mock import patch, Mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from checks.network import check_intel_lan, check_bluetooth_via_windows_update
+from checks.network import check_intel_lan, check_bluetooth_via_windows_update, check_wifi_via_windows_update
 from checks.npu import check_intel_npu
 
 GENERIC_DATE = "20060621000000.000000-000"
@@ -56,9 +56,32 @@ class CheckDeviceNameResolutionTests(unittest.TestCase):
 
         # the resolved name, not "Generic Bluetooth Adapter", was used
         # as the search query -- this is the actual fix for the incident
-        # that motivated this feature
+        # that motivated this feature. title_contains="Bluetooth" is the
+        # fix for the follow-up finding: a bare vendor-only resolved name
+        # (no product match) must not be free-searched across ALL of that
+        # vendor's catalog entries -- see providers/ms_catalog.py.
         mock_provider_cls.assert_called_once_with(
-            query="Qualcomm Atheros Communications", name="bluetooth_windows_update",
+            query="Qualcomm Atheros Communications", title_contains="Bluetooth", name="bluetooth_windows_update",
+        )
+        self.assertEqual(result.device, "Qualcomm Atheros Communications")
+        self.assertIn("Qualcomm Atheros Communications", result.display_line)
+
+    @patch("checks.network.MsCatalogProvider")
+    @patch("checks.common.hardware_ids.lookup", return_value=("Qualcomm Atheros Communications", None))
+    def test_wifi_via_windows_update_searches_by_resolved_name(self, _mock_lookup, mock_provider_cls):
+        mock_provider_cls.return_value.get_latest.return_value = None
+        devices = [{
+            "DeviceID": "PCI\\VEN_168C&DEV_003E", "DeviceName": "Generic Wireless Network Adapter",
+            "DriverVersion": "12.0.0.1000", "DriverDate": GENERIC_DATE,
+            "VendorID": "168C", "DeviceID_PCI": "003E",
+        }]
+        result = check_wifi_via_windows_update(devices, board={}, laptop={})
+
+        # same category-safety fix as Bluetooth above, but WiFi/networking
+        # catalog entries use "Net" or "WLAN" as the category word instead
+        # of "Bluetooth" -- confirmed live (see providers/ms_catalog.py).
+        mock_provider_cls.assert_called_once_with(
+            query="Qualcomm Atheros Communications", title_contains=("Net", "WLAN"), name="wifi_windows_update",
         )
         self.assertEqual(result.device, "Qualcomm Atheros Communications")
         self.assertIn("Qualcomm Atheros Communications", result.display_line)

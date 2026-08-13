@@ -83,5 +83,64 @@ class GetLatestVersionColumnFallbackTests(unittest.TestCase):
         self.assertIsNone(result)
 
 
+class TitleContainsTupleFilterTests(unittest.TestCase):
+    # a vendor-only resolved device name (see checks/network.py's
+    # check_bluetooth_via_windows_update/check_wifi_via_windows_update)
+    # can match unrelated catalog rows from the same vendor's other
+    # product categories -- title_contains narrows the free-text search
+    # result down to the right category. Different vendors use different
+    # category words for the same kind of device (confirmed live: WiFi
+    # entries say "Net" for most vendors but "WLAN" for Ralink), so
+    # title_contains must accept multiple alternative substrings.
+
+    def _mock_response(self, html: str):
+        resp = Mock()
+        resp.text = html
+        resp.raise_for_status = Mock()
+        return resp
+
+    @patch("providers.ms_catalog._resolve_download_url", return_value=None)
+    @patch("providers.ms_catalog.requests.get")
+    def test_tuple_matches_row_containing_any_substring(self, mock_get, _mock_resolve):
+        html = _catalog_html(
+            _row("guid1_R0", "Ralink Technology, Corp. - WLAN - Ralink 802.11n Wireless LAN Card", "3/4/2023", "1.2.3.4")
+        )
+        mock_get.return_value = self._mock_response(html)
+
+        result = MsCatalogProvider(query="Ralink Wireless", title_contains=("Net", "WLAN")).get_latest()
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["version"], "1.2.3.4")
+
+    @patch("providers.ms_catalog._resolve_download_url", return_value=None)
+    @patch("providers.ms_catalog.requests.get")
+    def test_tuple_excludes_row_containing_none_of_the_substrings(self, mock_get, _mock_resolve):
+        html = _catalog_html(
+            _row(
+                "guid2_R0",
+                "Qualcomm Atheros Communications Inc. - System - 1.0.0.1769",
+                "3/4/2023",
+                "1.0.0.1769",
+            )
+        )
+        mock_get.return_value = self._mock_response(html)
+
+        result = MsCatalogProvider(query="Qualcomm Atheros Communications", title_contains=("Net", "WLAN")).get_latest()
+
+        self.assertIsNone(result)
+
+    @patch("providers.ms_catalog._resolve_download_url", return_value=None)
+    @patch("providers.ms_catalog.requests.get")
+    def test_tuple_filter_is_case_insensitive(self, mock_get, _mock_resolve):
+        html = _catalog_html(
+            _row("guid3_R0", "Qualcomm Atheros Communications - bluetooth - 10.0.0.1272", "3/4/2023", "10.0.0.1272")
+        )
+        mock_get.return_value = self._mock_response(html)
+
+        result = MsCatalogProvider(query="Qualcomm Atheros Bluetooth", title_contains="Bluetooth").get_latest()
+
+        self.assertIsNotNone(result)
+
+
 if __name__ == "__main__":
     unittest.main()

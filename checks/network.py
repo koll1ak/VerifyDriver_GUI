@@ -301,7 +301,16 @@ def check_bluetooth_via_windows_update(devices, board, laptop):
     device_name = resolve_device_name(bt_device)
     current = bt_device.get("DriverVersion")
 
-    provider = MsCatalogProvider(query=device_name, name="bluetooth_windows_update")
+    # title_contains="Bluetooth": confirmed live across Qualcomm Atheros,
+    # MediaTek, Intel and Realtek Bluetooth catalog entries -- every one
+    # of them has "Bluetooth" in the title. Without this, a vendor-only
+    # resolved name (see resolve_device_name) like "Qualcomm Atheros
+    # Communications" can match that vendor's unrelated WiFi/audio/system
+    # catalog entries instead, since get_latest() otherwise just picks
+    # the newest-dated row with no category awareness.
+    provider = MsCatalogProvider(
+        query=device_name, title_contains="Bluetooth", name="bluetooth_windows_update"
+    )
     ok, latest = safe_get_latest(f"Bluetooth ({device_name})", provider)
     if not ok:
         latest = None
@@ -337,7 +346,16 @@ def check_wifi_via_windows_update(devices, board, laptop):
     device_name = resolve_device_name(wifi_device)
     current = wifi_device.get("DriverVersion")
 
-    provider = MsCatalogProvider(query=device_name, name="wifi_windows_update")
+    # title_contains=("Net", "WLAN"): confirmed live across Qualcomm
+    # Atheros, Broadcom, MediaTek and Marvell WiFi/networking catalog
+    # entries -- the category word in the title is usually "Net" (or
+    # "Network", also caught by the "Net" substring), but some entries
+    # (confirmed live: Ralink) instead say "WLAN". Same reasoning as the
+    # Bluetooth check above: without this, a vendor-only resolved name
+    # can match that vendor's unrelated Bluetooth/audio/system entries.
+    provider = MsCatalogProvider(
+        query=device_name, title_contains=("Net", "WLAN"), name="wifi_windows_update"
+    )
     ok, latest = safe_get_latest(f"WiFi ({device_name})", provider)
     if not ok:
         latest = None

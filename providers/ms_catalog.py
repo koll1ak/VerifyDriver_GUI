@@ -55,12 +55,19 @@ class MsCatalogProvider(DriverProvider):
     query: the search query — usually the exact device name from Windows
            (e.g. "Qualcomm QCA6174" or "MediaTek Wi-Fi 6")
     title_contains: an extra filter on the catalog entry's title, if you
-                     need to narrow it down (e.g. "Driver"), can be left empty
+                     need to narrow it down (e.g. "Driver"), can be left
+                     empty. Also accepts a tuple/list of alternative
+                     substrings — a row matches if the title contains ANY
+                     of them (case-insensitive) — since different vendors
+                     use different category words for the same kind of
+                     device (confirmed live: Qualcomm/Broadcom/MediaTek
+                     WiFi/networking catalog entries say "Net", but some
+                     Ralink entries say "WLAN" instead).
     """
 
-    def __init__(self, query: str, title_contains: str = "", name: str = "ms_catalog"):
+    def __init__(self, query: str, title_contains: str | tuple[str, ...] = "", name: str = "ms_catalog"):
         self.query = query
-        self.title_contains = title_contains
+        self.title_contains = (title_contains,) if isinstance(title_contains, str) else tuple(title_contains)
         self.name = name
 
     def matches(self, device: dict) -> bool:
@@ -82,6 +89,7 @@ class MsCatalogProvider(DriverProvider):
 
         best = None
         best_date = None
+        substrings = tuple(s.upper() for s in self.title_contains if s)
 
         for row in table.find_all("tr"):
             cells = row.find_all("td")
@@ -89,7 +97,7 @@ class MsCatalogProvider(DriverProvider):
                 continue  # skip the header and other non-data rows
 
             title = cells[1].get_text(strip=True)
-            if self.title_contains and self.title_contains.upper() not in title.upper():
+            if substrings and not any(s in title.upper() for s in substrings):
                 continue
 
             date_str = cells[4].get_text(strip=True)
