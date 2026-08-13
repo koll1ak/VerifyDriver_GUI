@@ -96,7 +96,8 @@ def check_dell_bios(devices, board, laptop):
     url = dell_drivers_url(tag)
     if url is None:
         return None
-    return manual_check_unavailable("Dell BIOS", url)
+    current, current_date = get_current_bios_info()
+    return manual_check_unavailable("Dell BIOS", url, current=current, current_date=current_date)
 
 
 def check_dell_audio(devices, board, laptop):
@@ -362,7 +363,8 @@ def check_huawei_bios(devices, board, laptop):
     url = huawei_search_url(laptop.get("model"))
     if url is None:
         return None
-    return manual_check_unavailable("Huawei BIOS", url)
+    current, current_date = get_current_bios_info()
+    return manual_check_unavailable("Huawei BIOS", url, current=current, current_date=current_date)
 
 
 def check_lenovo_bios(devices, board, laptop):

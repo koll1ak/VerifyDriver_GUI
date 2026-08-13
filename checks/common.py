@@ -111,15 +111,23 @@ def manual_result(label, display_line, url=None, current=None, device_name=None,
     )
 
 
-def manual_check_unavailable(label, url, device_name=None):
+def manual_check_unavailable(label, url, device_name=None, current=None, current_date=None):
     """
     Shared shape specifically for the "site confirmed blocked/unreachable
     — visit it yourself" checks (ASRock, Dell, Huawei, and the desktop
     vendor_configs' blocked-page fallback in checks/audio.py) — same
     exact wording every time, just the label/url differ.
+
+    current/current_date: the installed version, when the caller has a
+    way to read it independently of the (blocked) vendor site — e.g.
+    BIOS via Win32_BIOS, the same source used for the desktop checks.
+    Not being able to reach the site doesn't mean we can't show what's
+    actually installed.
     """
     display_line = f"[{label}] automatic check unavailable — visit the site manually: {url}"
-    return manual_result(label, display_line, url=url, device_name=device_name)
+    return manual_result(
+        label, display_line, url=url, device_name=device_name, current=current, current_date=current_date,
+    )
 
 
 def find_device(devices, predicate):

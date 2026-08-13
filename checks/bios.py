@@ -92,7 +92,8 @@ def check_bios(devices, board, laptop):
         # same underlying situation as Dell, same fix: a manual link
         # instead of a check that can never actually succeed.
         url = overall_drivers_page_url(board, laptop)
-        return manual_check_unavailable("ASRock BIOS", url)
+        current, current_date = get_current_bios_info()
+        return manual_check_unavailable("ASRock BIOS", url, current=current, current_date=current_date)
 
     if vendor == "asus":
         model = board.get("asus_model")
