@@ -4,13 +4,14 @@ import sys
 import tkinter as tk
 import tkinter.font as tkfont
 import webbrowser
-from tkinter import ttk
+from tkinter import ttk, messagebox
 from typing import NamedTuple
 
 from checks.common import overall_drivers_page_url
 from checks.registry import CATEGORY_ORDER
 from orchestrator import group_pairs_by_category
 from gui import worker
+import driver_install
 
 WINDOW_TITLE = "VerifyDriver"
 # base size at 100% Windows scaling (96 DPI) -- actually applied through
@@ -60,11 +61,42 @@ class _RowInfo(NamedTuple):
     restoring after a hover, url for opening on click)."""
     tags: tuple
     url: str | None
+    # True for rows whose double-click should download+install rather
+    # than open the browser -- see _is_cab_installable
+    installable: bool = False
 
-# "Scanning" is the longest of the three normal-flow status texts
-# (Ready/Scanning/Done) — reserve that much width so the layout doesn't
-# shift as the text changes between them
-STATUS_LABEL_WIDTH = len("Scanning")
+
+_DOWNLOAD_UPDATE_STATUS = "Download update"
+_INSTALLABLE_STATUS_TEXT = "Download and install update"
+
+
+def _is_cab_installable(result) -> bool:
+    """
+    True for rows whose available update is a raw .cab -- today only the
+    two MS Catalog checks (Bluetooth/WiFi via Windows Update) resolve
+    straight to one (see providers/ms_catalog.py's _resolve_download_url).
+    Deliberately inferred from status+url rather than a new CheckResult
+    field: naturally excludes "Up to date" rows (which link to the same
+    .cab for reference only, not for action) and the MS Catalog
+    search-page fallback (not a .cab) -- and covers any future check
+    that starts resolving direct .cab links the same way, with no code
+    change here.
+    """
+    return result.status == _DOWNLOAD_UPDATE_STATUS and bool(result.url) and result.url.lower().endswith(".cab")
+
+
+def _display_status_text(result, installable: bool) -> str:
+    """The Status column's displayed text -- installable rows get a
+    GUI-only relabel; result.status itself (and therefore the CLI
+    output, which never reads this function) is untouched."""
+    return _INSTALLABLE_STATUS_TEXT if installable else result.status
+
+
+# reserve enough width for the longest status text across both the
+# scan flow (Ready/Scanning/Done) and the install flow
+# (Downloading/Installing/Done) so the layout doesn't shift as the text
+# changes
+STATUS_LABEL_WIDTH = max(len("Scanning"), len("Downloading"), len("Installing"))
 
 
 def _fit_text(text, max_width, measure):
@@ -98,6 +130,7 @@ class App:
         self._rows: dict[str, _RowInfo] = {}
         self._row_counter = 0
         self._hovered_row = None
+        self._installing = False
         # full, untruncated text per tree item id and column id ("#0"
         # plus the value columns) -- every re-fit recomputes from these,
         # never from an already-truncated string, so widening a column
@@ -376,19 +409,20 @@ class App:
         else:
             tags = ()
 
+        installable = _is_cab_installable(result)
         iid = self._next_row_iid()
         full = {
             "#0": result.device,
             "current": result.current,
             "available": result.available,
-            "status": result.status,
+            "status": _display_status_text(result, installable),
         }
         self._full_text[iid] = full
         self.tree.insert(
             category_iid, "end", iid=iid, text=full["#0"],
             values=(full["current"], full["available"], full["status"]), tags=tags,
         )
-        self._rows[iid] = _RowInfo(tags, result.url)
+        self._rows[iid] = _RowInfo(tags, result.url, installable)
 
     def _insert_error_row(self, category_iid, message):
         iid = self._next_row_iid()
@@ -413,12 +447,61 @@ class App:
     # --- links -----------------------------------------------------------
 
     def _on_row_double_click(self, _event):
+        if self._installing:
+            return
         selected = self.tree.selection()
         if not selected:
             return
         info = self._rows.get(selected[0])
-        if info and info.url:
+        if not info or not info.url:
+            return
+        if info.installable:
+            self._start_install(info.url)
+        else:
             webbrowser.open(info.url)
+
+    def _start_install(self, url):
+        self._installing = True
+        self.scan_button.config(state="disabled")
+        self.status_label.config(text="Downloading")
+        self.progress.start(10)
+        self.install_queue = queue.Queue()
+        driver_install.start_install(url, self.install_queue)
+        self.root.after(100, self._poll_install_queue)
+
+    def _poll_install_queue(self):
+        try:
+            while True:
+                msg = self.install_queue.get_nowait()
+                tag = msg[0]
+                if tag == driver_install.DOWNLOADING:
+                    self.status_label.config(text="Downloading")
+                elif tag == driver_install.INSTALLING:
+                    self.status_label.config(text="Installing")
+                elif tag == driver_install.DONE:
+                    self._finish_install()
+                    return
+                elif tag == driver_install.DONE_REBOOT_REQUIRED:
+                    self._finish_install()
+                    messagebox.showinfo(
+                        "Reboot required",
+                        "The driver was installed, but Windows needs a reboot to finish applying it.",
+                    )
+                    return
+                elif tag == driver_install.ERROR:
+                    _, reason = msg
+                    self._finish_install()
+                    messagebox.showerror("Driver install failed", reason)
+                    return
+        except queue.Empty:
+            pass
+        self.root.after(100, self._poll_install_queue)
+
+    def _finish_install(self):
+        self.progress.stop()
+        self.scan_button.config(state="normal")
+        self.status_label.config(text="Done")
+        self._installing = False
 
     def _on_tree_motion(self, event):
         row = self.tree.identify_row(event.y)
