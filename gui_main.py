@@ -1,5 +1,6 @@
 import sys
 import os
+import ctypes
 
 # In a windowed build (no console attached — how the packaged .exe runs),
 # sys.stdout/sys.stderr are None, same as under pythonw.exe. Several
@@ -17,7 +18,33 @@ if sys.stdout is None or sys.stderr is None:
 from gui.app import App
 
 
+def _is_elevated() -> bool:
+    """Whether this process already holds admin rights. Installing a
+    driver via pnputil requires them, so the whole app runs elevated
+    rather than prompting again at install time."""
+    return bool(ctypes.windll.shell32.IsUserAnAdmin())
+
+
+def _relaunch_elevated():
+    """Re-launches this same process with a UAC prompt. Works both as
+    `python gui_main.py` (dev, see the no-rebuild-every-change
+    convention) and as the packaged Nuitka onefile exe -- Nuitka injects
+    __compiled__ as a module global at compile time, which is how the
+    two cases are told apart."""
+    if "__compiled__" in globals():
+        executable = sys.executable
+        args = sys.argv[1:]
+    else:
+        executable = sys.executable
+        args = [os.path.abspath(__file__)] + sys.argv[1:]
+    params = " ".join(f'"{a}"' for a in args)
+    ctypes.windll.shell32.ShellExecuteW(None, "runas", executable, params, None, 1)
+
+
 def main():
+    if not _is_elevated():
+        _relaunch_elevated()
+        return
     App().run()
 
 
