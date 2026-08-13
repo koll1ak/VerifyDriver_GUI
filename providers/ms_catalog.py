@@ -100,9 +100,16 @@ class MsCatalogProvider(DriverProvider):
             # 2016-2017) have no real version at all, just the literal
             # placeholder text "n/a" in that column — picking one of
             # these as "best" produced a nonsensical "update to n/a".
-            # Skip them; a versionless entry can never be a valid update.
+            # But some entries (confirmed live: every Qualcomm Atheros
+            # Bluetooth result) also show "n/a" in that column even
+            # though they DO have a real version — it's just embedded
+            # in the title instead (e.g. "Qualcomm Atheros
+            # Communications - Bluetooth - 10.0.0.1272"). Recover it
+            # from there before giving up on the row.
             if not version or version.strip().lower() in ("n/a", "-"):
-                continue
+                version = self._version_from_title(title)
+                if not version:
+                    continue
 
             date = self._parse_date(date_str)
             if date is None:
@@ -138,6 +145,11 @@ class MsCatalogProvider(DriverProvider):
         del best["update_id"]
 
         return best
+
+    @staticmethod
+    def _version_from_title(title: str) -> str | None:
+        match = re.search(r"-\s*(\d+(?:\.\d+){2,4})\s*$", title)
+        return match.group(1) if match else None
 
     @staticmethod
     def _parse_date(date_str: str):
