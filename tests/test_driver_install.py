@@ -9,11 +9,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import driver_install
 
+# a real allowed host (matches driver_install._TRUSTED_URL_HOST_SUFFIXES)
+# -- used in place of the old "https://example.com/driver.cab" placeholder
+# now that _download enforces a trust check before/after the request
+TRUSTED_URL = "https://catalog.s.download.windowsupdate.com/c/msdownload/update/driver/drvs/x/y.cab"
 
-def _mock_download_response(chunks=(b"cab-bytes",)):
+
+def _mock_download_response(chunks=(b"cab-bytes",), url=TRUSTED_URL):
     resp = Mock()
     resp.raise_for_status = Mock()
     resp.iter_content = Mock(return_value=list(chunks))
+    # requests sets .url to the final URL after following any redirects
+    # -- _download re-checks this against the trust list, so it must be
+    # a real string, not an unconfigured Mock attribute
+    resp.url = url
     return resp
 
 
@@ -29,7 +38,7 @@ class RunPipelineTests(unittest.TestCase):
         mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
 
         q = queue.Queue()
-        driver_install._run_pipeline("https://example.com/driver.cab", q)
+        driver_install._run_pipeline(TRUSTED_URL, q)
 
         messages = _drain(q)
         self.assertEqual(
@@ -71,7 +80,7 @@ class RunPipelineTests(unittest.TestCase):
         ]
 
         q = queue.Queue()
-        driver_install._run_pipeline("https://example.com/driver.cab", q)
+        driver_install._run_pipeline(TRUSTED_URL, q)
 
         messages = _drain(q)
         self.assertEqual(messages[-1][0], driver_install.DONE_REBOOT_REQUIRED)
@@ -90,7 +99,7 @@ class RunPipelineTests(unittest.TestCase):
         mock_get.side_effect = RuntimeError("connection reset")
 
         q = queue.Queue()
-        driver_install._run_pipeline("https://example.com/driver.cab", q)
+        driver_install._run_pipeline(TRUSTED_URL, q)
 
         messages = _drain(q)
         self.assertEqual(messages[-1][0], driver_install.ERROR)
@@ -103,7 +112,7 @@ class RunPipelineTests(unittest.TestCase):
         mock_run.return_value = Mock(returncode=1, stdout="", stderr="cabinet is corrupt")
 
         q = queue.Queue()
-        driver_install._run_pipeline("https://example.com/driver.cab", q)
+        driver_install._run_pipeline(TRUSTED_URL, q)
 
         messages = _drain(q)
         self.assertEqual(messages[-1][0], driver_install.ERROR)
@@ -125,7 +134,7 @@ class RunPipelineTests(unittest.TestCase):
         ]
 
         q = queue.Queue()
-        driver_install._run_pipeline("https://example.com/driver.cab", q)
+        driver_install._run_pipeline(TRUSTED_URL, q)
 
         messages = _drain(q)
         self.assertEqual(messages[-1][0], driver_install.ERROR)
@@ -157,10 +166,74 @@ class RunPipelineTests(unittest.TestCase):
 
         with patch("driver_install.tempfile.mkdtemp", side_effect=_tracking_mkdtemp):
             q = queue.Queue()
-            driver_install._run_pipeline("https://example.com/driver.cab", q)
+            driver_install._run_pipeline(TRUSTED_URL, q)
 
         self.assertEqual(len(captured_dirs), 1)
         self.assertFalse(os.path.exists(captured_dirs[0]))
+
+
+class TrustedUrlTests(unittest.TestCase):
+    """
+    _is_cab_installable in gui/app.py is only a UI dispatch hint (it
+    just checks the URL ends in ".cab") -- these tests cover the actual
+    security gate in driver_install._download, which runs right before
+    an elevated pnputil gets involved.
+    """
+
+    @patch("driver_install.subprocess.run")
+    @patch("driver_install.requests.get")
+    def test_http_url_rejected_before_requests_get(self, mock_get, mock_run):
+        q = queue.Queue()
+        driver_install._run_pipeline("http://catalog.s.download.windowsupdate.com/driver.cab", q)
+
+        messages = _drain(q)
+        self.assertEqual(messages[-1][0], driver_install.ERROR)
+        self.assertIn("untrusted URL", messages[-1][1])
+        mock_get.assert_not_called()
+        mock_run.assert_not_called()
+
+    @patch("driver_install.subprocess.run")
+    @patch("driver_install.requests.get")
+    def test_https_disallowed_host_rejected_before_requests_get(self, mock_get, mock_run):
+        q = queue.Queue()
+        driver_install._run_pipeline("https://evil.example.com/driver.cab", q)
+
+        messages = _drain(q)
+        self.assertEqual(messages[-1][0], driver_install.ERROR)
+        self.assertIn("untrusted URL", messages[-1][1])
+        mock_get.assert_not_called()
+        mock_run.assert_not_called()
+
+    @patch("driver_install.subprocess.run")
+    @patch("driver_install.requests.get")
+    def test_redirect_to_untrusted_host_rejected_after_requests_get(self, mock_get, mock_run):
+        # the initial URL passes the trust check, but the response's
+        # final (post-redirect) URL points somewhere untrusted
+        mock_get.return_value = _mock_download_response(url="https://evil.example.com/driver.cab")
+
+        q = queue.Queue()
+        driver_install._run_pipeline(TRUSTED_URL, q)
+
+        messages = _drain(q)
+        self.assertEqual(messages[-1][0], driver_install.ERROR)
+        self.assertIn("untrusted URL", messages[-1][1])
+        mock_get.assert_called_once()
+        mock_run.assert_not_called()
+
+    def test_is_trusted_url_accepts_windowsupdate_and_microsoft_hosts(self):
+        self.assertTrue(driver_install._is_trusted_url(
+            "https://catalog.s.download.windowsupdate.com/c/msdownload/update/driver/drvs/x/y.cab"
+        ))
+        self.assertTrue(driver_install._is_trusted_url("https://download.microsoft.com/driver.cab"))
+
+    def test_is_trusted_url_rejects_http_scheme(self):
+        self.assertFalse(driver_install._is_trusted_url("http://download.microsoft.com/driver.cab"))
+
+    def test_is_trusted_url_rejects_lookalike_host(self):
+        # "windowsupdate.com.evil.example.com" doesn't end with the
+        # trusted suffix "*.windowsupdate.com" -- a naive substring
+        # check would be fooled by this, an endswith on hostname isn't
+        self.assertFalse(driver_install._is_trusted_url("https://windowsupdate.com.evil.example.com/driver.cab"))
 
 
 class StartInstallTests(unittest.TestCase):
@@ -171,7 +244,7 @@ class StartInstallTests(unittest.TestCase):
         mock_run.return_value = Mock(returncode=0, stdout="", stderr="")
 
         q = queue.Queue()
-        thread = driver_install.start_install("https://example.com/driver.cab", q)
+        thread = driver_install.start_install(TRUSTED_URL, q)
         thread.join(timeout=5)
 
         messages = _drain(q)

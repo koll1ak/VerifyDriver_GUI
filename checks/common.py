@@ -5,6 +5,12 @@ from typing import NamedTuple
 
 from net_utils import classify_error
 
+# the status text report() sets when an update is available -- exported
+# so callers (e.g. gui/app.py's _is_cab_installable) can key off the
+# exact same string instead of duplicating the literal, which would
+# silently drift out of sync if this ever changed here
+DOWNLOAD_UPDATE_STATUS = "Download update"
+
 
 class CheckResult(NamedTuple):
     """
@@ -395,6 +401,6 @@ def report(label, latest, current, comparator=None, page_url=None, device_name=N
     display_line = f"[{label}] UPDATE AVAILABLE: {current} -> {latest['version']}"
     return build_result(
         label, display_line, update_line, current=current, available=latest["version"],
-        status="Download update", url=display_url or None, device_name=device_name,
+        status=DOWNLOAD_UPDATE_STATUS, url=display_url or None, device_name=device_name,
         current_date=current_date, available_date=available_date,
     )

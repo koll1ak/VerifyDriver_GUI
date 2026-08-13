@@ -1,13 +1,13 @@
 import ctypes
 import queue
+import subprocess
 import sys
 import tkinter as tk
 import tkinter.font as tkfont
-import webbrowser
 from tkinter import ttk, messagebox
 from typing import NamedTuple
 
-from checks.common import overall_drivers_page_url
+from checks.common import overall_drivers_page_url, DOWNLOAD_UPDATE_STATUS
 from checks.registry import CATEGORY_ORDER
 from orchestrator import group_pairs_by_category
 from gui import worker
@@ -30,6 +30,23 @@ BASE_COLUMN_WIDTHS = {"#0": 280, "current": 170, "available": 170, "status": 220
 # arrow and one indent level, so it gets extra margin
 CELL_WIDTH_MARGIN = 16
 TREE_COLUMN_EXTRA_MARGIN = 20
+
+
+def _open_in_browser(url: str) -> None:
+    """
+    Launches url via explorer.exe rather than webbrowser.open(). The app
+    as a whole now runs elevated (see gui_main.main()) so that pnputil
+    never needs its own UAC prompt -- but that means a direct
+    webbrowser.open() call would launch a not-yet-running browser at
+    admin integrity too (downloads landing admin-owned, drag-and-drop
+    from Explorer breaking). Handing the URL to explorer.exe instead
+    re-launches the browser at the normal, non-elevated shell integrity
+    level even though this process itself is elevated. explorer.exe's
+    exit code isn't a meaningful success/failure signal here, so it's
+    deliberately not checked -- same as webbrowser.open()'s return value
+    was already ignored before this change.
+    """
+    subprocess.run(["explorer.exe", url], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 
 def _enable_windows_dpi_awareness():
@@ -66,7 +83,6 @@ class _RowInfo(NamedTuple):
     installable: bool = False
 
 
-_DOWNLOAD_UPDATE_STATUS = "Download update"
 _INSTALLABLE_STATUS_TEXT = "Download and install update"
 
 
@@ -82,7 +98,7 @@ def _is_cab_installable(result) -> bool:
     that starts resolving direct .cab links the same way, with no code
     change here.
     """
-    return result.status == _DOWNLOAD_UPDATE_STATUS and bool(result.url) and result.url.lower().endswith(".cab")
+    return result.status == DOWNLOAD_UPDATE_STATUS and bool(result.url) and result.url.lower().endswith(".cab")
 
 
 def _display_status_text(result, installable: bool) -> str:
@@ -458,7 +474,7 @@ class App:
         if info.installable:
             self._start_install(info.url)
         else:
-            webbrowser.open(info.url)
+            _open_in_browser(info.url)
 
     def _start_install(self, url):
         self._installing = True
@@ -539,7 +555,7 @@ class App:
             self._drivers_link_range = (link_start, link_end)
             self.drivers_link.tag_bind("link", "<Enter>", lambda e: self._on_drivers_link_enter())
             self.drivers_link.tag_bind("link", "<Leave>", lambda e: self._on_drivers_link_leave())
-            self.drivers_link.tag_bind("link", "<Button-1>", lambda e: webbrowser.open(url))
+            self.drivers_link.tag_bind("link", "<Button-1>", lambda e: _open_in_browser(url))
         self.drivers_link.config(state="disabled")
 
     def _on_drivers_link_enter(self):

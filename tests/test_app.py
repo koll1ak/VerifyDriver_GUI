@@ -1,10 +1,12 @@
+import subprocess
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from gui.app import _fit_text
+from gui.app import _fit_text, _open_in_browser
 
 
 class FitTextTests(unittest.TestCase):
@@ -37,6 +39,28 @@ class FitTextTests(unittest.TestCase):
         # "Statu..." (53) would fit under a naive 1-char-at-a-time cut, but
         # the first cut always removes 2, landing on "Stat..." instead.
         self.assertEqual(_fit_text("Status", 53, proportional), "Stat...")
+
+
+class OpenInBrowserTests(unittest.TestCase):
+    """
+    The whole app runs elevated (see gui_main.main()) so that pnputil
+    never needs its own UAC prompt -- but a direct webbrowser.open()
+    call would then launch a not-yet-running browser at admin integrity
+    too. _open_in_browser instead shells out to explorer.exe, which
+    re-launches the browser at normal (non-elevated) integrity even
+    though this process is elevated. This is an OS shell launch, not
+    meaningfully unit-testable beyond asserting the right command gets
+    run -- actually launching a browser isn't attempted here.
+    """
+
+    @patch("gui.app.subprocess.run")
+    def test_launches_via_explorer_exe_with_no_window(self, mock_run):
+        _open_in_browser("https://example.com/some/page")
+
+        mock_run.assert_called_once_with(
+            ["explorer.exe", "https://example.com/some/page"],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
 
 
 if __name__ == "__main__":

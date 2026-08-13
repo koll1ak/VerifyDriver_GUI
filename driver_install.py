@@ -13,6 +13,7 @@ import subprocess
 import tempfile
 import threading
 import queue
+from urllib.parse import urlparse
 
 import requests
 
@@ -29,11 +30,36 @@ _PNPUTIL_REBOOT_REQUIRED_EXIT_CODE = 3010
 
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
+# hosts trusted to serve a driver .cab that we hand to an elevated
+# pnputil -- _is_cab_installable in gui/app.py is only a UI dispatch
+# hint (it just checks the URL ends in ".cab"), not a security control,
+# so this is the actual gate before anything gets downloaded and
+# installed with admin rights. The Microsoft Update Catalog has
+# historically served some non-HTTPS links, so a network attacker
+# substituting a plain-http (or off-catalog) URL is a realistic threat
+# this needs to block.
+_TRUSTED_URL_HOST_SUFFIXES = (".windowsupdate.com", ".microsoft.com")
+
+
+def _is_trusted_url(url: str) -> bool:
+    parsed = urlparse(url)
+    if (parsed.scheme or "").lower() != "https":
+        return False
+    hostname = (parsed.hostname or "").lower()
+    return any(hostname.endswith(suffix) for suffix in _TRUSTED_URL_HOST_SUFFIXES)
+
 
 def _download(url: str, dest_dir: str) -> str:
+    if not _is_trusted_url(url):
+        raise RuntimeError(f"refusing to download from an untrusted URL: {url}")
     cab_path = os.path.join(dest_dir, "driver.cab")
     resp = requests.get(url, stream=True, timeout=60)
     resp.raise_for_status()
+    # requests.get follows redirects by default -- resp.url is the final
+    # resolved URL, which needs the same trust check in case a
+    # redirect from an initially-trusted URL lands somewhere untrusted
+    if not _is_trusted_url(resp.url):
+        raise RuntimeError(f"refusing to download from an untrusted URL: {resp.url}")
     with open(cab_path, "wb") as f:
         for chunk in resp.iter_content(chunk_size=65536):
             f.write(chunk)
