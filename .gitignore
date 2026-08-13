@@ -12,3 +12,4 @@ docs/
 *.build/
 *.dist/
 *.onefile-build/
+.worktrees/
