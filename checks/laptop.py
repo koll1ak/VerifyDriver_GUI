@@ -111,7 +111,17 @@ def check_dell_audio(devices, board, laptop):
     url = dell_drivers_url(tag)
     if url is None:
         return None
-    return manual_check_unavailable("Dell Audio", url)
+
+    audio_device = (
+        find_device_by_vendor_and_keywords(devices, "10EC", ("AUDIO",))
+        or find_device_by_vendor_and_keywords(devices, "0BDA", ("AUDIO",))
+    )
+    current = audio_device.get("DriverVersion") if audio_device else None
+    current_date = audio_device.get("DriverDate") if audio_device else None
+    return manual_check_unavailable(
+        "Dell Audio", url, device_name=audio_device.get("DeviceName") if audio_device else None,
+        current=current, current_date=current_date,
+    )
 
 
 def check_acer_bios(devices, board, laptop):
