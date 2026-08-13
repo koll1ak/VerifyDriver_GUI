@@ -25,12 +25,15 @@ def _is_elevated() -> bool:
     return bool(ctypes.windll.shell32.IsUserAnAdmin())
 
 
-def _relaunch_elevated():
+def _relaunch_elevated() -> bool:
     """Re-launches this same process with a UAC prompt. Works both as
     `python gui_main.py` (dev, see the no-rebuild-every-change
     convention) and as the packaged Nuitka onefile exe -- Nuitka injects
     __compiled__ as a module global at compile time, which is how the
-    two cases are told apart."""
+    two cases are told apart.
+
+    Returns True if the relaunch succeeded, False if the user declined
+    the UAC prompt or another error occurred."""
     if "__compiled__" in globals():
         executable = sys.executable
         args = sys.argv[1:]
@@ -38,12 +41,14 @@ def _relaunch_elevated():
         executable = sys.executable
         args = [os.path.abspath(__file__)] + sys.argv[1:]
     params = " ".join(f'"{a}"' for a in args)
-    ctypes.windll.shell32.ShellExecuteW(None, "runas", executable, params, None, 1)
+    result = ctypes.windll.shell32.ShellExecuteW(None, "runas", executable, params, None, 1)
+    return result > 32
 
 
 def main():
     if not _is_elevated():
-        _relaunch_elevated()
+        if not _relaunch_elevated():
+            ctypes.windll.user32.MessageBoxW(None, "VerifyDriver needs administrator rights to install drivers. Please run it again and accept the UAC prompt.", "Administrator rights required", 0x10)
         return
     App().run()
 
