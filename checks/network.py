@@ -1,3 +1,7 @@
+import sys
+
+from net_utils import classify_error
+from scanner import get_devices_by_class
 from checks.common import (
     find_device, find_device_by_vendor_and_keywords, find_intel_wifi_device, safe_get_latest, report,
     parse_flexible_date, no_downgrade_match, build_result, _parse_version_tuple, resolve_device_name,
@@ -233,11 +237,36 @@ def check_intel_wifi(devices, board, laptop):
     )
 
 
+def _find_bluetooth_device(devices, predicate):
+    """
+    Looks for a Bluetooth device matching predicate, falling back to a
+    Get-PnpDevice lookup (by PNP class "Bluetooth") if it's not in the
+    normal Win32_PnPSignedDriver-sourced list — mirrors
+    checks/audio.py's _find_audio_device (composite USB devices'
+    Bluetooth sub-function can be invisible to Win32_PnPSignedDriver the
+    same way a composite audio device's can be). Keyed on device class
+    rather than a fixed vendor ID, unlike audio's fallback: Bluetooth
+    chips come from many makers (Qualcomm, MediaTek, Broadcom, ...), so
+    there's no single VID to search for.
+    """
+    device = find_device(devices, predicate)
+    if device is not None:
+        return device
+    try:
+        fallback_devices = get_devices_by_class("Bluetooth")
+    except Exception as e:
+        print(f"[Bluetooth] fallback lookup error: {classify_error(e)}", file=sys.stderr)
+        fallback_devices = []
+    return find_device(fallback_devices, predicate)
+
+
 def check_intel_bluetooth(devices, board, laptop):
     # IMPORTANT: Intel Bluetooth devices in Windows are listed under a
     # DIFFERENT PCI/USB Vendor ID — 8087, not 8086 (which is used for
     # WiFi/chipset/GPU) — confirmed on a real device.
-    device = find_device_by_vendor_and_keywords(devices, "8087", ("BLUETOOTH",))
+    device = _find_bluetooth_device(
+        devices, lambda d: d.get("VendorID") == "8087" and "BLUETOOTH" in d.get("DeviceName", "").upper()
+    )
     if device is None:
         return None  # no Intel Bluetooth module in the system — silently skip
     current = device.get("DriverVersion")
@@ -286,7 +315,7 @@ def check_bluetooth_via_windows_update(devices, board, laptop):
     vendors don't have a separate official downloads page, so the only
     official source is the Microsoft Update Catalog.
     """
-    bt_device = find_device(
+    bt_device = _find_bluetooth_device(
         devices,
         lambda d: d.get("VendorID") not in ("8086", "8087") and "BLUETOOTH" in d.get("DeviceName", "").upper(),
     )
