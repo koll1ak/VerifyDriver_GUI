@@ -3,6 +3,8 @@ import re
 from datetime import datetime
 from typing import NamedTuple
 
+import hardware_ids
+
 from net_utils import classify_error
 
 # the status text report() sets when an update is available -- exported
@@ -74,6 +76,33 @@ def _with_date(version, raw_date):
         return "—"
     date = _parse_valid_date(raw_date)
     return f"{version} ({date.date()})" if date else version
+
+
+def resolve_device_name(device: dict) -> str:
+    """
+    Devices stuck on Windows' generic/inbox driver report an unhelpful
+    name (e.g. "Generic Bluetooth Adapter") instead of anything
+    identifying the actual hardware -- resolves a better one from the
+    bundled usb.ids/pci.ids databases (see hardware_ids.py) via the
+    device's VID/PID, when the database happens to have it. Falls back
+    to the original DeviceName whenever nothing better is found, so this
+    never shows something worse than what Windows already reported.
+
+    Only attempted when DriverDate is EXACTLY the generic-driver
+    placeholder date (_NULL_DRIVER_PLACEHOLDER_DATE) -- not keyed on
+    Manufacturer == "Microsoft" alone, which would misfire on legitimate
+    Microsoft-authored virtual sub-devices (Bluetooth transport/profile
+    drivers etc.) that are correct as installed, not a fallback situation.
+    """
+    name = device.get("DeviceName") or ""
+    parsed_date = parse_flexible_date(device.get("DriverDate") or "")
+    if parsed_date != _NULL_DRIVER_PLACEHOLDER_DATE:
+        return name
+
+    device_id = (device.get("DeviceID") or "").upper()
+    namespace = "usb" if device_id.startswith("USB") else "pci"
+    vendor_name, product_name = hardware_ids.lookup(namespace, device.get("VendorID"), device.get("DeviceID_PCI"))
+    return product_name or vendor_name or name
 
 
 def build_result(
