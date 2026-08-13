@@ -37,6 +37,29 @@ class RunPipelineTests(unittest.TestCase):
             [driver_install.DOWNLOADING, driver_install.INSTALLING, driver_install.DONE],
         )
 
+        # Verify subprocess.run calls were made with correct commands
+        self.assertEqual(len(mock_run.call_args_list), 2)
+
+        # First call: expand.exe to unpack the .cab file
+        expand_call = mock_run.call_args_list[0]
+        self.assertEqual(expand_call.args[0][0], "expand.exe")
+        self.assertEqual(expand_call.args[0][1], "-F:*")
+        self.assertIn("driver.cab", expand_call.args[0][2])  # cab path
+        self.assertEqual(expand_call.kwargs["creationflags"], driver_install._NO_WINDOW)
+        self.assertTrue(expand_call.kwargs.get("capture_output", False))
+        self.assertTrue(expand_call.kwargs.get("text", False))
+
+        # Second call: pnputil.exe to install drivers
+        pnputil_call = mock_run.call_args_list[1]
+        self.assertEqual(pnputil_call.args[0][0], "pnputil.exe")
+        self.assertEqual(pnputil_call.args[0][1], "/add-driver")
+        self.assertIn("*.inf", pnputil_call.args[0][2])  # driver pattern
+        self.assertIn("/subdirs", pnputil_call.args[0])
+        self.assertIn("/install", pnputil_call.args[0])
+        self.assertEqual(pnputil_call.kwargs["creationflags"], driver_install._NO_WINDOW)
+        self.assertTrue(pnputil_call.kwargs.get("capture_output", False))
+        self.assertTrue(pnputil_call.kwargs.get("text", False))
+
     @patch("driver_install.subprocess.run")
     @patch("driver_install.requests.get")
     def test_reboot_required_exit_code_posts_done_reboot_required(self, mock_get, mock_run):
@@ -52,6 +75,15 @@ class RunPipelineTests(unittest.TestCase):
 
         messages = _drain(q)
         self.assertEqual(messages[-1][0], driver_install.DONE_REBOOT_REQUIRED)
+
+        # Verify subprocess.run calls with correct commands
+        self.assertEqual(len(mock_run.call_args_list), 2)
+        expand_call = mock_run.call_args_list[0]
+        self.assertEqual(expand_call.args[0][0], "expand.exe")
+        self.assertEqual(expand_call.kwargs["creationflags"], driver_install._NO_WINDOW)
+        pnputil_call = mock_run.call_args_list[1]
+        self.assertEqual(pnputil_call.args[0][0], "pnputil.exe")
+        self.assertEqual(pnputil_call.kwargs["creationflags"], driver_install._NO_WINDOW)
 
     @patch("driver_install.requests.get")
     def test_download_failure_posts_error_with_reason(self, mock_get):
@@ -77,6 +109,12 @@ class RunPipelineTests(unittest.TestCase):
         self.assertEqual(messages[-1][0], driver_install.ERROR)
         self.assertIn("cabinet is corrupt", messages[-1][1])
 
+        # Verify expand.exe was called with correct command
+        expand_call = mock_run.call_args_list[0]
+        self.assertEqual(expand_call.args[0][0], "expand.exe")
+        self.assertEqual(expand_call.args[0][1], "-F:*")
+        self.assertEqual(expand_call.kwargs["creationflags"], driver_install._NO_WINDOW)
+
     @patch("driver_install.subprocess.run")
     @patch("driver_install.requests.get")
     def test_install_failure_posts_error(self, mock_get, mock_run):
@@ -92,6 +130,18 @@ class RunPipelineTests(unittest.TestCase):
         messages = _drain(q)
         self.assertEqual(messages[-1][0], driver_install.ERROR)
         self.assertIn("access denied", messages[-1][1])
+
+        # Verify both subprocess.run calls with correct commands
+        self.assertEqual(len(mock_run.call_args_list), 2)
+        expand_call = mock_run.call_args_list[0]
+        self.assertEqual(expand_call.args[0][0], "expand.exe")
+        self.assertEqual(expand_call.kwargs["creationflags"], driver_install._NO_WINDOW)
+        pnputil_call = mock_run.call_args_list[1]
+        self.assertEqual(pnputil_call.args[0][0], "pnputil.exe")
+        self.assertIn("/add-driver", pnputil_call.args[0])
+        self.assertIn("/subdirs", pnputil_call.args[0])
+        self.assertIn("/install", pnputil_call.args[0])
+        self.assertEqual(pnputil_call.kwargs["creationflags"], driver_install._NO_WINDOW)
 
     @patch("driver_install.subprocess.run")
     @patch("driver_install.requests.get")
@@ -127,6 +177,15 @@ class StartInstallTests(unittest.TestCase):
         messages = _drain(q)
         self.assertEqual(messages[-1][0], driver_install.DONE)
         self.assertFalse(thread.is_alive())
+
+        # Verify subprocess.run calls with correct commands even on background thread
+        self.assertEqual(len(mock_run.call_args_list), 2)
+        expand_call = mock_run.call_args_list[0]
+        self.assertEqual(expand_call.args[0][0], "expand.exe")
+        self.assertEqual(expand_call.kwargs["creationflags"], driver_install._NO_WINDOW)
+        pnputil_call = mock_run.call_args_list[1]
+        self.assertEqual(pnputil_call.args[0][0], "pnputil.exe")
+        self.assertEqual(pnputil_call.kwargs["creationflags"], driver_install._NO_WINDOW)
 
 
 if __name__ == "__main__":
