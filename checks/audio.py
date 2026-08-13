@@ -58,6 +58,18 @@ def _audio_display_name(device):
     mention it, so the table still shows which vendor's chip this is,
     even for names resolve_device_name's placeholder-date gate doesn't
     catch.
+
+    NOTE: for devices found via _find_audio_device's Get-PnpDevice
+    fallback (composite USB audio devices Win32_PnPSignedDriver misses —
+    see scanner.get_devices_by_id_pattern), resolve_device_name can never
+    fire at all: that fallback's PowerShell query doesn't select a
+    DriverDate field, so the placeholder-date check it depends on always
+    sees a value that isn't the generic-driver placeholder. These devices
+    silently always fall through to the vendor-prefix heuristic below —
+    this is by design for this fix wave (not a bug to chase here), but it
+    means the very devices most likely to be stuck on a generic driver
+    (composite USB audio) don't get the benefit of the more precise
+    hardware-ID-resolved name.
     """
     if not device:
         return None
