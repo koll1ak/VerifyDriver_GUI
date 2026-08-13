@@ -27,9 +27,11 @@ PS_COMMAND_PNP_FALLBACK = (
     "ForEach-Object {{ "
     "  $ver = (Get-PnpDeviceProperty -InstanceId $_.InstanceId "
     "          -KeyName 'DEVPKEY_Device_DriverVersion' -ErrorAction SilentlyContinue).Data; "
+    "  $date = (Get-PnpDeviceProperty -InstanceId $_.InstanceId "
+    "          -KeyName 'DEVPKEY_Device_DriverDate' -ErrorAction SilentlyContinue).Data; "
     "  [PSCustomObject]@{{ "
     "    DeviceName = $_.FriendlyName; DeviceID = $_.InstanceId; "
-    "    DriverVersion = $ver; Status = $_.Status "
+    "    DriverVersion = $ver; DriverDate = $date; Status = $_.Status "
     "  }} "
     "}} | ConvertTo-Json -Depth 3"
 )
