@@ -137,20 +137,53 @@ def check_realtek_wifi(devices, board, laptop):
 def check_realtek_usb_lan(devices, board, laptop):
     """
     External USB Ethernet adapters/dongles from Realtek — a separate
-    category (cate_id=585) from built-in PCIe chips. Also without an
-    automatic version comparison (see check_realtek_wifi).
+    category (cate_id=585) from built-in PCIe chips, but the site
+    publishes the same NDIS/NetAdapterCx split with the same version
+    scheme as check_realtek_lan's NDIS case (realtek_ndis_versions_match).
+    Its NetAdapterCx case is different, though: detect_realtek_lan_variant
+    /is_recognized_realtek_version_format assume the installed version's
+    first segment is a product-code+year combo (e.g. "1126" for a 2021
+    release) — confirmed live, the USB category's NetAdapterCx entry
+    instead uses "115X" as a literal placeholder for a chip-specific
+    digit (installed "1156.10.20.1104" is that same family, "115" +
+    chip digit "6"), which isn't a plausible year and would be
+    misclassified as "unknown" by the PCIe check. realtek_versions_match
+    itself still applies unchanged — it only compares the last two
+    segments, ignoring the first either way.
     """
-    provider = RealtekUsbLanProvider()
-    device = find_device(devices, provider)
+    provider_finder = RealtekUsbLanProvider()
+    device = find_device(devices, provider_finder)
     if device is None:
         return None
 
+    current = device.get("DriverVersion")
+    parts = current.split(".") if current else []
+
+    if len(parts) == 4 and parts[0] in ("10", "11"):
+        match_substrings, comparator = ("NDIS",), realtek_ndis_versions_match
+    elif len(parts) == 4:
+        match_substrings, comparator = ("NetAdapterCx",), realtek_versions_match
+    else:
+        match_substrings, comparator = None, None
+
+    if comparator is None:
+        # unrecognized version format — same as before this fix, don't
+        # risk a false comparison, just show what the site has
+        ok, latest = safe_get_latest("Realtek USB LAN", provider_finder)
+        if not ok:
+            latest = None
+        return report(
+            "Realtek USB LAN", latest, current=None, page_url=REALTEK_USB_LAN_PAGE_URL,
+            device_name=device.get("DeviceName"),
+        )
+
+    provider = RealtekUsbLanProvider(match_substrings=match_substrings)
     ok, latest = safe_get_latest("Realtek USB LAN", provider)
     if not ok:
         latest = None
     return report(
-        "Realtek USB LAN", latest, current=None, page_url=REALTEK_USB_LAN_PAGE_URL,
-        device_name=device.get("DeviceName"),
+        "Realtek USB LAN", latest, current, comparator=comparator, page_url=REALTEK_USB_LAN_PAGE_URL,
+        device_name=device.get("DeviceName"), current_date=device.get("DriverDate"),
     )
 
 
