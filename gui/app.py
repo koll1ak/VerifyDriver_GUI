@@ -496,6 +496,11 @@ class App:
                     self.status_label.config(text="Installing")
                 elif tag == driver_install.DONE:
                     self._finish_install()
+                    # the table still reflects pre-install state (stale
+                    # "Download and install update" row) -- a full
+                    # re-scan is the only way to pick up the version
+                    # Windows now actually has installed
+                    self._start_scan()
                     return
                 elif tag == driver_install.DONE_REBOOT_REQUIRED:
                     self._finish_install()
@@ -503,6 +508,7 @@ class App:
                         "Reboot required",
                         "The driver was installed, but Windows needs a reboot to finish applying it.",
                     )
+                    self._start_scan()
                     return
                 elif tag == driver_install.ERROR:
                     _, reason = msg
