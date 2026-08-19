@@ -308,7 +308,9 @@ def check_senary_audio(devices, board, laptop):
         latest = None
     # the OEM (e.g. Huawei) repackages the driver under its own version
     # number, different from what's on the SenaryTech site — comparison
-    # isn't reliable
+    # isn't reliable, but the installed version itself is still known
+    # and worth showing (display_current), just not compared against
     return report(
         "Senary Audio", latest, current=None, page_url=SENARY_PAGE_URL, device_name=resolve_device_name(device),
+        display_current=device.get("DriverVersion"), display_current_date=device.get("DriverDate"),
     )

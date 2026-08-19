@@ -358,7 +358,10 @@ def parse_flexible_date(raw: str):
     return None
 
 
-def report(label, latest, current, comparator=None, page_url=None, device_name=None, current_date=None):
+def report(
+    label, latest, current, comparator=None, page_url=None, device_name=None, current_date=None,
+    display_current=None, display_current_date=None,
+):
     """
     Shared comparison logic. Returns a CheckResult; display_line/
     update_line are the exact text that's always been printed (doesn't
@@ -378,22 +381,35 @@ def report(label, latest, current, comparator=None, page_url=None, device_name=N
     DriverDate), when the caller has one. The available driver's date is
     picked up automatically from latest["date"] if the provider scraped
     one — the caller doesn't need to pass that part.
+
+    display_current/display_current_date — the actual installed version/
+    date to show in the Current column when `current` is None because a
+    caller deliberately disabled comparison (e.g. check_senary_audio:
+    Huawei repackages the chip driver under its own version scheme, not
+    comparable to the chip maker's site) rather than because the
+    installed version is genuinely unknown. Defaults to current/
+    current_date, so callers that don't pass this keep showing nothing,
+    same as before.
     """
     available_date = latest.get("date") if latest else None
+    if display_current is None:
+        display_current = current
+    if display_current_date is None:
+        display_current_date = current_date
 
     if latest is None:
         if page_url:
-            suffix = f" (installed {current})" if current is not None else ""
+            suffix = f" (installed {display_current})" if display_current is not None else ""
             display_line = f"[{label}] automatic check unavailable{suffix} — visit the site manually: {page_url}"
             return build_result(
-                label, display_line, current=current, status="Manual check", url=page_url, device_name=device_name,
-                current_date=current_date,
+                label, display_line, current=display_current, status="Manual check", url=page_url,
+                device_name=device_name, current_date=display_current_date,
             )
-        if current is not None:
-            display_line = f"[{label}] installed {current} (couldn't find a version to compare against on the site)"
+        if display_current is not None:
+            display_line = f"[{label}] installed {display_current} (couldn't find a version to compare against on the site)"
             return build_result(
-                label, display_line, current=current, status="Not found", device_name=device_name,
-                current_date=current_date,
+                label, display_line, current=display_current, status="Not found", device_name=device_name,
+                current_date=display_current_date,
             )
         display_line = f"[{label}] could not find a version on the site to compare against"
         return build_result(label, display_line, status="Not found", device_name=device_name)
@@ -401,8 +417,9 @@ def report(label, latest, current, comparator=None, page_url=None, device_name=N
     if current is None:
         display_line = f"[{label}] on the site: {latest['version']} (couldn't compare against the installed version)"
         return build_result(
-            label, display_line, available=latest["version"], status="Found (no comparison)",
+            label, display_line, current=display_current, available=latest["version"], status="Found (no comparison)",
             url=latest.get("page_url") or latest.get("url"), device_name=device_name, available_date=available_date,
+            current_date=display_current_date,
         )
 
     is_match = comparator(current, latest["version"]) if comparator else (current == latest["version"])
