@@ -21,12 +21,48 @@ import re
 import requests
 from bs4 import BeautifulSoup
 
+import hardware_ids
 from providers.base import DriverProvider
 from providers.http_utils import DEFAULT_HEADERS
 
 PAGE_URL = "https://www.senarytech.com/en/DriverDownload/index.aspx"
 
 _VERSION_RE = re.compile(r"(\d+\.\d+\.\d+(?:\.\d+)?)_")
+
+# the release date is also baked into the file name, right before the
+# extension (e.g. "..._DCH_10-21-22WHQL_Common_20231206.zip" -> "20231206")
+_DATE_RE = re.compile(r"_(\d{8})\.zip", re.IGNORECASE)
+
+# every chip code the site's two catalog entries list at the time this
+# was written (see the module docstring's live-confirmed titles) --
+# checked against the bundled pci.ids database in resolve_chip_code()
+# below, NOT assumed to all be present there (only CX11880 confirmed so far)
+_KNOWN_CHIP_CODES = ("CX20632", "CX11880", "CX11970", "SN6140")
+
+
+def resolve_chip_code(device: dict) -> str | None:
+    """
+    Determines which SenaryTech-listed chip is installed, using the
+    bundled pci.ids database (see hardware_ids.py) resolved via the
+    device's PCI Vendor/Device ID. Confirmed live: pci.ids has
+    chip-specific entries for CX11880 under Conexant's vendor ID (14F1,
+    the same one SenaryTech-branded chips report) --
+    "1f86  DBH CX11880 Codec" / "1f87  SMIC CX11880 Codec" -- but NOT for
+    CX20632/CX11970/SN6140, which aren't in pci.ids at all.
+
+    Returns None whenever the chip can't be confirmed this way (includes
+    the CX20632/CX11970/SN6140 case above) -- callers MUST treat that as
+    "chip unknown", not "no update available"; a wrong guess here would
+    silently compare against the wrong catalog entry.
+    """
+    vendor_name, product_name = hardware_ids.lookup("pci", device.get("VendorID"), device.get("DeviceID_PCI"))
+    if not product_name:
+        return None
+    product_upper = product_name.upper()
+    for code in _KNOWN_CHIP_CODES:
+        if code in product_upper:
+            return code
+    return None
 
 
 class SenaryAudioProvider(DriverProvider):
@@ -67,7 +103,9 @@ class SenaryAudioProvider(DriverProvider):
         if self.chip_code:
             entries = [e for e in entries if self.chip_code in e["title"].upper()] or entries
             latest = entries[0]
-            return {"version": latest["version"], "url": latest["url"], "description": latest["title"]}
+            date_match = _DATE_RE.search(latest["title"])
+            date = date_match.group(1) if date_match else None
+            return {"version": latest["version"], "url": latest["url"], "description": latest["title"], "date": date}
 
         # without an exact chip code (DEV_) we don't know which entry is
         # really yours — show ALL of them at once instead of guessing one

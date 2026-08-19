@@ -5,11 +5,12 @@ from scanner import get_devices_by_id_pattern
 from checks.common import (
     find_device, find_device_driver_version, find_device_by_vendor_and_keywords, safe_get_latest, report,
     no_downgrade_match, overall_drivers_page_url, manual_check_unavailable, resolve_device_name,
+    parse_flexible_date, build_result,
 )
 from providers.msi_driver import MsiDriverProvider, get_installed_inf_version, get_installed_inf_date
 from providers.gigabyte_driver import GigabyteDriverProvider
 from providers.asus_driver import AsusDriverProvider
-from providers.senary_audio import SenaryAudioProvider, PAGE_URL as SENARY_PAGE_URL
+from providers.senary_audio import SenaryAudioProvider, PAGE_URL as SENARY_PAGE_URL, resolve_chip_code
 from providers.ms_catalog import MsCatalogProvider, catalog_search_url
 
 
@@ -302,15 +303,60 @@ def check_senary_audio(devices, board, laptop):
     if device is None:
         return None
 
-    provider = SenaryAudioProvider()
+    current = device.get("DriverVersion")
+    current_date_raw = device.get("DriverDate")
+    device_name = resolve_device_name(device)
+
+    # resolve_chip_code only confirms a chip via the bundled pci.ids
+    # database (currently just CX11880) -- None means "couldn't tell",
+    # not "no chip", so unidentified chips fall through to the same
+    # no-comparison display as before, further down
+    chip_code = resolve_chip_code(device)
+    provider = SenaryAudioProvider(chip_code=chip_code)
     ok, latest = safe_get_latest("Senary Audio", provider)
     if not ok:
         latest = None
-    # the OEM (e.g. Huawei) repackages the driver under its own version
-    # number, different from what's on the SenaryTech site — comparison
-    # isn't reliable, but the installed version itself is still known
-    # and worth showing (display_current), just not compared against
+
+    if chip_code and latest is not None:
+        # the OEM (e.g. Huawei) still repackages the driver under its own
+        # version number (see the module docstring), so a version
+        # comparison isn't possible even for a confirmed chip -- but the
+        # site's filename date is a real, comparable signal, same
+        # date-based fallback check_realtek_lan uses for its own
+        # incompatible-version-format case
+        installed_date = parse_flexible_date(current_date_raw)
+        site_date = parse_flexible_date(latest.get("date")) if latest.get("date") else None
+        if installed_date and site_date:
+            if (site_date - installed_date).days > 60:  # threshold to avoid noise on small discrepancies
+                display_line = (
+                    f"[Senary Audio] possibly outdated (by date, not by version — OEM repackages with its own "
+                    f"version numbers): installed driver from {installed_date.date()}, site has one from {site_date.date()}"
+                )
+                update_line = (
+                    f"Senary Audio: possibly outdated — installed driver from {installed_date.date()}, "
+                    f"site: {SENARY_PAGE_URL}"
+                )
+                return build_result(
+                    "Senary Audio", display_line, update_line,
+                    current=current, available=latest["version"], current_date=current_date_raw,
+                    available_date=latest.get("date"), status="Possibly outdated (by date)",
+                    url=SENARY_PAGE_URL, device_name=device_name,
+                )
+            display_line = f"[Senary Audio] up to date by date (installed driver from {installed_date.date()})"
+            return build_result(
+                "Senary Audio", display_line,
+                current=current, available=latest["version"], current_date=current_date_raw,
+                available_date=latest.get("date"), status="Up to date (by date)",
+                url=SENARY_PAGE_URL, device_name=device_name,
+            )
+        # chip confirmed but no usable date on one/both sides -- fall
+        # through to the generic no-comparison display below, same as an
+        # unidentified chip
+
+    # chip not identified via pci.ids, or date comparison wasn't possible
+    # — the installed version is still known and worth showing
+    # (display_current), just not compared against
     return report(
-        "Senary Audio", latest, current=None, page_url=SENARY_PAGE_URL, device_name=resolve_device_name(device),
-        display_current=device.get("DriverVersion"), display_current_date=device.get("DriverDate"),
+        "Senary Audio", latest, current=None, page_url=SENARY_PAGE_URL, device_name=device_name,
+        display_current=current, display_current_date=current_date_raw,
     )
