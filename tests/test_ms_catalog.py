@@ -211,7 +211,7 @@ class RetryOnTimeoutTests(unittest.TestCase):
         with self.assertRaises(requests.Timeout):
             MsCatalogProvider(query="Qualcomm QCA6174").get_latest()
 
-        self.assertEqual(mock_get.call_count, 3)
+        self.assertEqual(mock_get.call_count, 2)
 
 
 if __name__ == "__main__":

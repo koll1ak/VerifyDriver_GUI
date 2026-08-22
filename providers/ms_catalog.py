@@ -29,8 +29,14 @@ DOWNLOAD_DIALOG_URL = "https://www.catalog.update.microsoft.com/DownloadDialog.a
 # enough to blow past a normal timeout even though the site is otherwise up
 # (a retry moments later succeeds) -- without a retry, one slow response
 # turns a real "driver available" into a false "Manual check" in the GUI.
-RETRY_ATTEMPTS = 3
-RETRY_BACKOFF_SECONDS = 2
+# Also confirmed live: when the site IS down/blocking, it stays down for
+# the whole scan, so a long per-attempt timeout times many attempts just
+# makes the GUI look stuck for minutes with no better outcome -- keep the
+# worst case (attempts * timeout + backoff) close to the old single-shot
+# 20s wait rather than stacking full 20s timeouts on top of each other.
+REQUEST_TIMEOUT_SECONDS = 12
+RETRY_ATTEMPTS = 2
+RETRY_BACKOFF_SECONDS = 1
 
 
 def _request_with_retry(method, url, **kwargs):
@@ -83,7 +89,7 @@ def _resolve_download_url(update_id: str) -> str | None:
         DOWNLOAD_DIALOG_URL,
         data=body,
         headers={**DEFAULT_HEADERS, "Content-Type": "application/x-www-form-urlencoded"},
-        timeout=20,
+        timeout=REQUEST_TIMEOUT_SECONDS,
     )
     urls = re.findall(r"downloadInformation\[0\]\.files\[\d+\]\.url = '([^']+)'", resp.text)
     return urls[0] if urls else None
@@ -118,7 +124,7 @@ class MsCatalogProvider(DriverProvider):
             SEARCH_URL,
             params={"q": self.query},
             headers=DEFAULT_HEADERS,
-            timeout=20,
+            timeout=REQUEST_TIMEOUT_SECONDS,
         )
 
         soup = BeautifulSoup(resp.text, "html.parser")
