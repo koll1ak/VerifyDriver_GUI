@@ -3,6 +3,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import requests
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from providers.ms_catalog import CatalogPageUnexpected, MsCatalogProvider
@@ -175,6 +177,41 @@ class UnexpectedPageTests(unittest.TestCase):
 
         with self.assertRaises(CatalogPageUnexpected):
             MsCatalogProvider(query="Realtek High Definition Audio").get_latest()
+
+
+class RetryOnTimeoutTests(unittest.TestCase):
+    # catalog.update.microsoft.com is confirmed live to be intermittently
+    # slow enough to time out even while otherwise up -- a lone timeout
+    # must not be reported as a failed check when a retry would succeed.
+
+    def _mock_response(self, html: str):
+        resp = Mock()
+        resp.text = html
+        resp.raise_for_status = Mock()
+        return resp
+
+    @patch("providers.ms_catalog.time.sleep")
+    @patch("providers.ms_catalog._resolve_download_url", return_value=None)
+    @patch("providers.ms_catalog.requests.get")
+    def test_recovers_after_one_timeout(self, mock_get, _mock_resolve, _mock_sleep):
+        html = _catalog_html(_row("guid1_R0", "Qualcomm Atheros Communications - Bluetooth - 10.0.0.1272", "3/4/2023", "n/a"))
+        mock_get.side_effect = [requests.Timeout("timed out"), self._mock_response(html)]
+
+        result = MsCatalogProvider(query="Qualcomm Atheros QCA61x4 Bluetooth").get_latest()
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["version"], "10.0.0.1272")
+        self.assertEqual(mock_get.call_count, 2)
+
+    @patch("providers.ms_catalog.time.sleep")
+    @patch("providers.ms_catalog.requests.get")
+    def test_gives_up_after_exhausting_retries(self, mock_get, _mock_sleep):
+        mock_get.side_effect = requests.Timeout("timed out")
+
+        with self.assertRaises(requests.Timeout):
+            MsCatalogProvider(query="Qualcomm QCA6174").get_latest()
+
+        self.assertEqual(mock_get.call_count, 3)
 
 
 if __name__ == "__main__":

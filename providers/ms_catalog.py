@@ -13,6 +13,7 @@ does under the hood.
 """
 
 import re
+import time
 from datetime import datetime
 
 import requests
@@ -23,6 +24,27 @@ from providers.http_utils import DEFAULT_HEADERS
 
 SEARCH_URL = "https://www.catalog.update.microsoft.com/Search.aspx"
 DOWNLOAD_DIALOG_URL = "https://www.catalog.update.microsoft.com/DownloadDialog.aspx"
+
+# catalog.update.microsoft.com is confirmed live to be intermittently slow
+# enough to blow past a normal timeout even though the site is otherwise up
+# (a retry moments later succeeds) -- without a retry, one slow response
+# turns a real "driver available" into a false "Manual check" in the GUI.
+RETRY_ATTEMPTS = 3
+RETRY_BACKOFF_SECONDS = 2
+
+
+def _request_with_retry(method, url, **kwargs):
+    last_exc = None
+    for attempt in range(RETRY_ATTEMPTS):
+        try:
+            resp = method(url, **kwargs)
+            resp.raise_for_status()
+            return resp
+        except (requests.Timeout, requests.ConnectionError) as e:
+            last_exc = e
+            if attempt < RETRY_ATTEMPTS - 1:
+                time.sleep(RETRY_BACKOFF_SECONDS)
+    raise last_exc
 
 # the search page's own confirmation that a query genuinely has no
 # matches (confirmed live: "We did not find any results for '<query>'"),
@@ -56,13 +78,13 @@ def _resolve_download_url(update_id: str) -> str | None:
     no auth/session needed, the CDN links are public.
     """
     body = f'updateIDs=[{{"size":0,"languages":"","uidInfo":"{update_id}","updateID":"{update_id}"}}]'
-    resp = requests.post(
+    resp = _request_with_retry(
+        requests.post,
         DOWNLOAD_DIALOG_URL,
         data=body,
         headers={**DEFAULT_HEADERS, "Content-Type": "application/x-www-form-urlencoded"},
         timeout=20,
     )
-    resp.raise_for_status()
     urls = re.findall(r"downloadInformation\[0\]\.files\[\d+\]\.url = '([^']+)'", resp.text)
     return urls[0] if urls else None
 
@@ -91,13 +113,13 @@ class MsCatalogProvider(DriverProvider):
         return False
 
     def get_latest(self, device: dict = None) -> dict | None:
-        resp = requests.get(
+        resp = _request_with_retry(
+            requests.get,
             SEARCH_URL,
             params={"q": self.query},
             headers=DEFAULT_HEADERS,
             timeout=20,
         )
-        resp.raise_for_status()
 
         soup = BeautifulSoup(resp.text, "html.parser")
         table = soup.find("table", id="ctl00_catalogBody_updateMatches")
