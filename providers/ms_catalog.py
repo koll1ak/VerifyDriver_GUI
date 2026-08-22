@@ -24,6 +24,23 @@ from providers.http_utils import DEFAULT_HEADERS
 SEARCH_URL = "https://www.catalog.update.microsoft.com/Search.aspx"
 DOWNLOAD_DIALOG_URL = "https://www.catalog.update.microsoft.com/DownloadDialog.aspx"
 
+# the search page's own confirmation that a query genuinely has no
+# matches (confirmed live: "We did not find any results for '<query>'"),
+# as opposed to a response with neither this NOR a results table -- e.g.
+# a maintenance page or bot-check interstitial served with 200 OK.
+NO_RESULTS_MARKER_ID = "ctl00_catalogBody_noResultText"
+
+
+class CatalogPageUnexpected(RuntimeError):
+    """
+    Raised when the search page loads (200 OK, no request exception) but
+    has neither a results table nor the confirmed "no results" message --
+    i.e. the site did not actually answer the search, it just returned
+    *something*. Deliberately NOT the same as get_latest() returning None
+    (a confirmed, genuine no-match), so safe_get_latest logs this as a
+    real error instead of it silently looking like "no update found".
+    """
+
 
 def catalog_search_url(query: str) -> str:
     from urllib.parse import quote
@@ -85,7 +102,12 @@ class MsCatalogProvider(DriverProvider):
         soup = BeautifulSoup(resp.text, "html.parser")
         table = soup.find("table", id="ctl00_catalogBody_updateMatches")
         if table is None:
-            return None
+            if soup.find(id=NO_RESULTS_MARKER_ID) is not None:
+                return None  # confirmed: genuinely no results for this query
+            raise CatalogPageUnexpected(
+                "Microsoft Update Catalog returned a page with no results table and no "
+                "'no results' confirmation -- the site may be temporarily broken"
+            )
 
         best = None
         best_date = None

@@ -61,5 +61,8 @@ def classify_error(exc: Exception) -> str:
     if "SSLError" in exc_name or "SSL" in exc_name:
         return "SSL connection error"
 
+    if exc_name == "CatalogPageUnexpected":
+        return exc_text
+
     # unknown error — show it as-is, but without a full traceback
     return f"unknown error ({exc_name}: {exc_text})"

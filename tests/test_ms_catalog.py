@@ -5,11 +5,18 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from providers.ms_catalog import MsCatalogProvider
+from providers.ms_catalog import CatalogPageUnexpected, MsCatalogProvider
 
 
 def _catalog_html(rows: str) -> str:
     return f'<table id="ctl00_catalogBody_updateMatches">{rows}</table>'
+
+
+def _no_results_html(query: str) -> str:
+    return (
+        f'<span id="ctl00_catalogBody_noResultText">We did not find any results for </span>'
+        f'<span id="ctl00_catalogBody_searchString">"{query}"</span>'
+    )
 
 
 def _row(row_id: str, title: str, date: str, version: str) -> str:
@@ -140,6 +147,34 @@ class TitleContainsTupleFilterTests(unittest.TestCase):
         result = MsCatalogProvider(query="Qualcomm Atheros Bluetooth", title_contains="Bluetooth").get_latest()
 
         self.assertIsNotNone(result)
+
+
+class UnexpectedPageTests(unittest.TestCase):
+    # A response can come back 200 OK with neither a results table NOR
+    # the site's own "no results" confirmation -- e.g. a maintenance page
+    # or bot-check interstitial. That must NOT be treated the same as a
+    # confirmed empty result (see CatalogPageUnexpected's docstring).
+
+    def _mock_response(self, html: str):
+        resp = Mock()
+        resp.text = html
+        resp.raise_for_status = Mock()
+        return resp
+
+    @patch("providers.ms_catalog.requests.get")
+    def test_confirmed_no_results_returns_none(self, mock_get):
+        mock_get.return_value = self._mock_response(_no_results_html("Qualcomm QCA6174"))
+
+        result = MsCatalogProvider(query="Qualcomm QCA6174").get_latest()
+
+        self.assertIsNone(result)
+
+    @patch("providers.ms_catalog.requests.get")
+    def test_missing_table_and_no_confirmation_raises(self, mock_get):
+        mock_get.return_value = self._mock_response("<html><body>Site Maintenance</body></html>")
+
+        with self.assertRaises(CatalogPageUnexpected):
+            MsCatalogProvider(query="Realtek High Definition Audio").get_latest()
 
 
 if __name__ == "__main__":
