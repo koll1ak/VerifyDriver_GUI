@@ -1,8 +1,7 @@
-import subprocess
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -44,23 +43,32 @@ class FitTextTests(unittest.TestCase):
 class OpenInBrowserTests(unittest.TestCase):
     """
     The whole app runs elevated (see gui_main.main()) so that pnputil
-    never needs its own UAC prompt -- but a direct webbrowser.open()
-    call would then launch a not-yet-running browser at admin integrity
-    too. _open_in_browser instead shells out to explorer.exe, which
-    re-launches the browser at normal (non-elevated) integrity even
-    though this process is elevated. This is an OS shell launch, not
-    meaningfully unit-testable beyond asserting the right command gets
-    run -- actually launching a browser isn't attempted here.
+    never needs its own UAC prompt -- but a direct webbrowser.open() (or
+    ShellExecuteW) call would then launch a not-yet-running browser at
+    admin integrity too. _open_in_browser instead routes through
+    explorer.exe's own running COM server (ShellWindows -> Document
+    .Application.ShellExecute), which re-launches the browser at normal
+    (non-elevated) integrity even though this process is elevated. This
+    is an OS shell launch, not meaningfully unit-testable beyond
+    asserting the right COM call gets made -- actually launching a
+    browser isn't attempted here.
+
+    A prior version shelled out to "explorer.exe <url>" directly --
+    confirmed live on Windows 11 build 10.0.26200 that this no longer
+    launches anything, it just opens a new File Explorer window at the
+    default library location instead (reported as "Download update"
+    redirecting to the home folder).
     """
 
-    @patch("gui.app.subprocess.run")
-    def test_launches_via_explorer_exe_with_no_window(self, mock_run):
+    @patch("gui.app.win32com.client.Dispatch")
+    def test_shell_executes_url_through_desktops_com_server(self, mock_dispatch):
+        mock_app = Mock()
+        mock_dispatch.return_value.Item.return_value.Document.Application = mock_app
+
         _open_in_browser("https://example.com/some/page")
 
-        mock_run.assert_called_once_with(
-            ["explorer.exe", "https://example.com/some/page"],
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
+        mock_dispatch.assert_called_once_with("{9BA05972-F6A8-11CF-A442-00A0C90A8F39}")
+        mock_app.ShellExecute.assert_called_once_with("https://example.com/some/page", "", "", "open", 1)
 
 
 if __name__ == "__main__":

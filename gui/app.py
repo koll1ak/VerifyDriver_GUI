@@ -1,11 +1,12 @@
 import ctypes
 import queue
-import subprocess
 import sys
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import ttk, messagebox
 from typing import NamedTuple
+
+import win32com.client
 
 from checks.common import overall_drivers_page_url, DOWNLOAD_UPDATE_STATUS
 from checks.registry import CATEGORY_ORDER
@@ -32,21 +33,38 @@ CELL_WIDTH_MARGIN = 16
 TREE_COLUMN_EXTRA_MARGIN = 20
 
 
+# CLSID of the shell's "ShellWindows" collection -- registered in the
+# Running Object Table by the already-running (non-elevated) explorer.exe,
+# so Dispatch()ing it below binds to THAT process's existing COM server
+# rather than loading a fresh in-process copy under our own token.
+_SHELL_WINDOWS_CLSID = "{9BA05972-F6A8-11CF-A442-00A0C90A8F39}"
+
+
 def _open_in_browser(url: str) -> None:
     """
-    Launches url via explorer.exe rather than webbrowser.open(). The app
-    as a whole now runs elevated (see gui_main.main()) so that pnputil
-    never needs its own UAC prompt -- but that means a direct
-    webbrowser.open() call would launch a not-yet-running browser at
-    admin integrity too (downloads landing admin-owned, drag-and-drop
-    from Explorer breaking). Handing the URL to explorer.exe instead
-    re-launches the browser at the normal, non-elevated shell integrity
-    level even though this process itself is elevated. explorer.exe's
-    exit code isn't a meaningful success/failure signal here, so it's
-    deliberately not checked -- same as webbrowser.open()'s return value
-    was already ignored before this change.
+    Launches url via a ShellExecute call made through explorer.exe's own
+    running COM server, rather than webbrowser.open() or a plain
+    ShellExecuteW/os.startfile() call. The app as a whole now runs
+    elevated (see gui_main.main()) so that pnputil never needs its own
+    UAC prompt -- but that means calling ShellExecute directly from our
+    own process would launch a not-yet-running browser at admin
+    integrity too (downloads landing admin-owned, drag-and-drop from
+    Explorer breaking).
+
+    This used to shell out to "explorer.exe <url>", which forwarded to
+    the shell the same way -- but confirmed live on a current Windows 11
+    build (10.0.26200): that no longer works at all, explorer.exe just
+    opens a new File Explorer window at the default library location
+    instead of launching anything. Routing through ShellWindows' Document
+    .Application.ShellExecute (the classic de-elevation technique, e.g.
+    used by fodhelper-style relaunches) achieves the same "run inside the
+    already-running non-elevated explorer.exe" result via a documented
+    COM interface instead of explorer.exe's command-line argument
+    handling, and isn't affected by that regression -- confirmed live.
     """
-    subprocess.run(["explorer.exe", url], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    shell_windows = win32com.client.Dispatch(_SHELL_WINDOWS_CLSID)
+    desktop = shell_windows.Item()
+    desktop.Document.Application.ShellExecute(url, "", "", "open", 1)
 
 
 def _enable_windows_dpi_awareness():
