@@ -38,6 +38,28 @@ def _find_meta(soup, name: str) -> str | None:
     return tag.get("content", "").strip() if tag and tag.get("content") else None
 
 
+_VERSION_PREFIX_RE = re.compile(r"^[\d.]+")
+
+
+def _find_version_meta(soup) -> str | None:
+    """
+    Like _find_meta(soup, "DownloadVersion"), but also strips a trailing
+    certification label -- confirmed live on the Arc & Iris Xe Graphics
+    page (download ID 785597): the content changed from a bare version
+    ("32.0.101.8991") to "32.0.101.8991 WHQL Certified", which broke
+    version comparison (a real driver install never has a trailing label
+    baked into DriverVersion, so it never matched, and always looked like
+    an update). Every other download-center page checked (chipset, LAN,
+    WiFi, NPU, Bluetooth) still serves a bare version, so this only ever
+    strips something on pages that actually have a suffix to strip.
+    """
+    raw = _find_meta(soup, "DownloadVersion")
+    if raw is None:
+        return None
+    m = _VERSION_PREFIX_RE.match(raw)
+    return m.group(0) if m else raw
+
+
 _PURPOSE_LI_RE = re.compile(r"^Driver version\s+([\d.]+)\s*:\s*For\s+(.+)$", re.IGNORECASE)
 
 
@@ -127,7 +149,7 @@ class IntelDownloadCenterProvider(DriverProvider):
 
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        version = _find_meta(soup, "DownloadVersion")
+        version = _find_version_meta(soup)
         date = _find_meta(soup, "lastModifieddate")
 
         if version is None:
@@ -163,7 +185,7 @@ class IntelBluetoothProvider(DriverProvider):
 
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        version = _find_meta(soup, "DownloadVersion")
+        version = _find_version_meta(soup)
         date = _find_meta(soup, "lastModifieddate")
 
         if version is None:
