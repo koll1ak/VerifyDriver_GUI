@@ -43,7 +43,7 @@ class BluetoothGetPnpDeviceFallbackTests(unittest.TestCase):
         devices = [{
             "DeviceID": "USB\\VID_0489&PID_E10A", "DeviceName": "Qualcomm Bluetooth",
             "DriverVersion": "1.0.0.0", "DriverDate": REAL_DATE,
-            "VendorID": "0489", "DeviceID_PCI": "E10A",
+            "VendorID": "0489", "DeviceID_PCI": "E10A", "DeviceClass": "BLUETOOTH",
         }]
 
         check_bluetooth_via_windows_update(devices, board={}, laptop={})

@@ -22,7 +22,7 @@ def check_amd_chipset(devices, board, laptop):
         lambda d: d.get("VendorID") == "1022" and any(
             kw in d.get("DeviceName", "").upper()
             for kw in ("SMBUS", "CHIPSET", "PCIE ROOT", "PCI ROOT")
-        ),
+        ) and (d.get("DeviceClass") or "").upper() == "SYSTEM",
     ) is not None
     if not has_amd_platform:
         return None  # not an AMD platform — silently skip
@@ -69,7 +69,7 @@ def check_intel_chipset(devices, board, laptop):
         lambda d: d.get("VendorID") == "8086" and any(
             kw in d.get("DeviceName", "").upper()
             for kw in ("SMBUS", "LPC", "ISA BRIDGE", "PCI BRIDGE", "HOST BRIDGE")
-        ),
+        ) and (d.get("DeviceClass") or "").upper() == "SYSTEM",
     )
     if intel_platform_device is None:
         return None  # not an Intel platform — silently skip

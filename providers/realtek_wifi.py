@@ -21,4 +21,5 @@ class RealtekWifiProvider(RealtekCategoryProvider):
         return (
             device.get("VendorID") == "10EC"
             and any(kw in device.get("DeviceName", "").upper() for kw in ("WLAN", "WIRELESS", "802.11"))
+            and (device.get("DeviceClass") or "").upper() == "NET"
         )

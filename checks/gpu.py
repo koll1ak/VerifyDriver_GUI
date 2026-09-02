@@ -58,7 +58,7 @@ def check_amd_gpu(devices, board, laptop):
     # IMPORTANT: AMD graphics cards have Vendor ID "1002" (inherited from
     # ATI), not "1022" (used for chipset/CPU devices) — confirmed on a
     # real device, there was originally a bug with the IDs swapped.
-    amd_gpu_device = find_device_by_vendor_and_keywords(devices, "1002", ("RADEON", "AMD GRAPHICS"))
+    amd_gpu_device = find_device_by_vendor_and_keywords(devices, "1002", ("RADEON", "AMD GRAPHICS"), device_class="DISPLAY")
     if amd_gpu_device is None:
         return None  # device not found in the system — silently skip
 
@@ -90,7 +90,7 @@ def check_intel_gpu(devices, board, laptop):
     # devices" error. So we search strictly for "ARC" or "IRIS XE", not
     # the generic "GRAPHICS"/bare "IRIS" (the latter also matches the
     # older Iris Plus/Pro).
-    device = find_device_by_vendor_and_keywords(devices, "8086", ("ARC", "IRIS XE"))
+    device = find_device_by_vendor_and_keywords(devices, "8086", ("ARC", "IRIS XE"), device_class="DISPLAY")
     if device is None:
         return None  # device not found in the system (or not Xe-generation) — silently skip
     current = device.get("DriverVersion")

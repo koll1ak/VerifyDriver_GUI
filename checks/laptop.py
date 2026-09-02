@@ -113,8 +113,8 @@ def check_dell_audio(devices, board, laptop):
         return None
 
     audio_device = (
-        find_device_by_vendor_and_keywords(devices, "10EC", ("AUDIO",))
-        or find_device_by_vendor_and_keywords(devices, "0BDA", ("AUDIO",))
+        find_device_by_vendor_and_keywords(devices, "10EC", ("AUDIO",), device_class="MEDIA")
+        or find_device_by_vendor_and_keywords(devices, "0BDA", ("AUDIO",), device_class="MEDIA")
     )
     current = audio_device.get("DriverVersion") if audio_device else None
     current_date = audio_device.get("DriverDate") if audio_device else None
@@ -171,8 +171,8 @@ def check_acer_audio(devices, board, laptop):
     # driver), the versions might match directly (a format like
     # "6.0.9180.1" looks like what Windows shows for an installed
     # Realtek package)
-    audio_device = find_device_by_vendor_and_keywords(devices, "10EC", ("AUDIO",)) or \
-        find_device_by_vendor_and_keywords(devices, "0BDA", ("AUDIO",))
+    audio_device = find_device_by_vendor_and_keywords(devices, "10EC", ("AUDIO",), device_class="MEDIA") or \
+        find_device_by_vendor_and_keywords(devices, "0BDA", ("AUDIO",), device_class="MEDIA")
     current = audio_device.get("DriverVersion") if audio_device else None
     current_date = audio_device.get("DriverDate") if audio_device else None
 
@@ -186,7 +186,10 @@ def check_acer_audio(devices, board, laptop):
         except Exception as e:
             print(f"[Acer Audio] fallback lookup error: {classify_error(e)}", file=sys.stderr)
             fallback_devices = []
-        audio_device = find_device(fallback_devices, lambda d: "AUDIO" in d.get("DeviceName", "").upper())
+        audio_device = find_device(
+            fallback_devices,
+            lambda d: "AUDIO" in d.get("DeviceName", "").upper() and (d.get("DeviceClass") or "").upper() == "MEDIA",
+        )
         current = audio_device.get("DriverVersion") if audio_device else None
 
     # an os_mismatch entry is still worth trusting if the version matches
@@ -213,9 +216,10 @@ def check_acer_lan(devices, board, laptop):
     # Acer's repackaged page instead of the chip vendor's official source
     has_realtek_lan = find_device(
         devices, lambda d: d.get("VendorID") == "10EC" and "FAMILY CONTROLLER" in d.get("DeviceName", "").upper()
+        and (d.get("DeviceClass") or "").upper() == "NET"
     ) is not None
     has_intel_lan = find_device_driver_version(
-        devices, "8086", ("ETHERNET", "I219", "I225", "I226", "I210", "I350")
+        devices, "8086", ("ETHERNET", "I219", "I225", "I226", "I210", "I350"), device_class="NET"
     ) is not None
     if has_realtek_lan or has_intel_lan:
         return None
@@ -232,8 +236,8 @@ def check_acer_lan(devices, board, laptop):
     # look for a network adapter — Killer/Realtek/Intel, on Acer it's
     # most often Killer (sometimes actually a rebranded Realtek chip
     # under their brand)
-    lan_device = find_device_by_vendor_and_keywords(devices, "10EC", ("ETHERNET", "GIGABIT", "KILLER")) or \
-        find_device_by_vendor_and_keywords(devices, "8086", ("ETHERNET", "I219", "I225", "I226"))
+    lan_device = find_device_by_vendor_and_keywords(devices, "10EC", ("ETHERNET", "GIGABIT", "KILLER"), device_class="NET") or \
+        find_device_by_vendor_and_keywords(devices, "8086", ("ETHERNET", "I219", "I225", "I226"), device_class="NET")
     current = lan_device.get("DriverVersion") if lan_device else None
     current_date = lan_device.get("DriverDate") if lan_device else None
 
@@ -249,7 +253,8 @@ def check_acer_lan(devices, board, laptop):
             fallback_devices = []
         lan_device = find_device(
             fallback_devices,
-            lambda d: any(kw in d.get("DeviceName", "").upper() for kw in ("ETHERNET", "GIGABIT", "KILLER")),
+            lambda d: any(kw in d.get("DeviceName", "").upper() for kw in ("ETHERNET", "GIGABIT", "KILLER"))
+            and (d.get("DeviceClass") or "").upper() == "NET",
         )
         current = lan_device.get("DriverVersion") if lan_device else None
 
@@ -298,8 +303,8 @@ def check_asus_laptop_audio(devices, board, laptop):
         return None
 
     provider = AsusLaptopDriverProvider(model=model, category="Audio", match_substrings=("Realtek",), name="asus_laptop_audio")
-    current = find_device_driver_version(devices, "10EC", ("AUDIO",)) or \
-        find_device_driver_version(devices, "0BDA", ("AUDIO",))
+    current = find_device_driver_version(devices, "10EC", ("AUDIO",), device_class="MEDIA") or \
+        find_device_driver_version(devices, "0BDA", ("AUDIO",), device_class="MEDIA")
 
     ok, latest = safe_get_latest("ASUS Audio", provider)
     if not ok:
@@ -317,7 +322,10 @@ def check_asus_laptop_audio(devices, board, laptop):
         except Exception as e:
             print(f"[ASUS Audio] fallback lookup error: {classify_error(e)}", file=sys.stderr)
             fallback_devices = []
-        audio_device = find_device(fallback_devices, lambda d: "AUDIO" in d.get("DeviceName", "").upper())
+        audio_device = find_device(
+            fallback_devices,
+            lambda d: "AUDIO" in d.get("DeviceName", "").upper() and (d.get("DeviceClass") or "").upper() == "MEDIA",
+        )
         current = audio_device.get("DriverVersion") if audio_device else None
 
     return report("ASUS Audio", latest, current)
@@ -337,11 +345,18 @@ def check_asus_laptop_networking(devices, board, laptop):
     if model is None:
         return None
 
+    # no vendor restriction here (unlike check_wifi_via_windows_update) --
+    # this is only used to decide whether to SKIP this check, but the same
+    # DeviceClass hardening still applies: a wireless peripheral dongle
+    # with "Wireless" in its name (e.g. a mouse/keyboard receiver, class
+    # HIDCLASS, not NET) must not cause this check to be wrongly skipped
     has_any_wifi = find_device(
         devices, lambda d: any(kw in d.get("DeviceName", "").upper() for kw in ("WI-FI", "WIRELESS", "WLAN"))
+        and (d.get("DeviceClass") or "").upper() == "NET"
     ) is not None
     has_realtek_lan = find_device(
         devices, lambda d: d.get("VendorID") == "10EC" and "FAMILY CONTROLLER" in d.get("DeviceName", "").upper()
+        and (d.get("DeviceClass") or "").upper() == "NET"
     ) is not None
     if has_any_wifi or has_realtek_lan:
         return None  # already covered by check_intel_wifi/check_wifi_via_windows_update/check_realtek_lan
@@ -349,7 +364,7 @@ def check_asus_laptop_networking(devices, board, laptop):
     provider = AsusLaptopDriverProvider(
         model=model, category="Networking", match_substrings=(), name="asus_laptop_networking"
     )
-    current = find_device_driver_version(devices, "8086", ("WI-FI",))
+    current = find_device_driver_version(devices, "8086", ("WI-FI",), device_class="NET")
 
     ok, latest = safe_get_latest("ASUS Networking", provider)
     if not ok:
@@ -509,8 +524,8 @@ def check_msi_laptop_audio(devices, board, laptop):
     if not ok:
         latest = None
 
-    current = find_device_driver_version(devices, "10EC", ("AUDIO",)) or \
-        find_device_driver_version(devices, "0BDA", ("AUDIO",))
+    current = find_device_driver_version(devices, "10EC", ("AUDIO",), device_class="MEDIA") or \
+        find_device_driver_version(devices, "0BDA", ("AUDIO",), device_class="MEDIA")
 
     # confirmed live the version (e.g. "6.0.9597.1") is in the same
     # dotted format WMI reports, so a direct comparison is meaningful
@@ -552,8 +567,8 @@ def check_gigabyte_laptop_audio(devices, board, laptop):
     if not ok:
         return None
 
-    current = find_device_driver_version(devices, "10EC", ("AUDIO",)) or \
-        find_device_driver_version(devices, "0BDA", ("AUDIO",))
+    current = find_device_driver_version(devices, "10EC", ("AUDIO",), device_class="MEDIA") or \
+        find_device_driver_version(devices, "0BDA", ("AUDIO",), device_class="MEDIA")
 
     # confirmed live the version (e.g. "6.0.9679.1") is in the same
     # dotted format WMI reports, so a direct comparison is meaningful
@@ -611,8 +626,8 @@ def check_lg_audio(devices, board, laptop):
     if not ok:
         return None
 
-    current = find_device_driver_version(devices, "10EC", ("AUDIO",)) or \
-        find_device_driver_version(devices, "0BDA", ("AUDIO",))
+    current = find_device_driver_version(devices, "10EC", ("AUDIO",), device_class="MEDIA") or \
+        find_device_driver_version(devices, "0BDA", ("AUDIO",), device_class="MEDIA")
 
     # comparison attempted since the version format (e.g. "24.10.0.4",
     # extracted from the title's "Ver.X" suffix) looks WMI-comparable

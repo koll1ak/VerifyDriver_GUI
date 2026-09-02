@@ -21,6 +21,7 @@ class DellAudioCurrentVersionTests(unittest.TestCase):
             "DeviceName": "Realtek High Definition Audio",
             "DriverVersion": "6.0.9564.1",
             "DriverDate": "20230815000000.000000-000",
+            "DeviceClass": "MEDIA",
         }]
         result = check_dell_audio(devices, board={}, laptop=LAPTOP)
 
@@ -34,6 +35,7 @@ class DellAudioCurrentVersionTests(unittest.TestCase):
             "DeviceName": "Realtek USB2.0 Audio",
             "DriverVersion": "6.0.9500.1",
             "DriverDate": None,
+            "DeviceClass": "MEDIA",
         }]
         result = check_dell_audio(devices, board={}, laptop=LAPTOP)
 

@@ -193,7 +193,7 @@ def check_realtek_usb_lan(devices, board, laptop):
 
 def check_intel_lan(devices, board, laptop):
     device = find_device_by_vendor_and_keywords(
-        devices, "8086", ("ETHERNET", "I219", "I225", "I226", "I210", "I350"),
+        devices, "8086", ("ETHERNET", "I219", "I225", "I226", "I210", "I350"), device_class="NET",
     )
     if device is None:
         return None  # no Intel network card in the system — silently skip
@@ -248,8 +248,17 @@ def _find_bluetooth_device(devices, predicate):
     rather than a fixed vendor ID, unlike audio's fallback: Bluetooth
     chips come from many makers (Qualcomm, MediaTek, Broadcom, ...), so
     there's no single VID to search for.
+
+    Restricted to DeviceClass "BLUETOOTH" on the primary list before
+    applying predicate — a name/vendor keyword alone isn't unique across
+    a vendor's whole product line (see find_device_by_vendor_and_keywords'
+    docstring in checks/common.py for the confirmed-live incident this
+    mirrors). Applied here rather than baked into predicate itself, since
+    predicate is reused below for the Get-PnpDevice fallback, which is
+    already filtered server-side by PNP class (-Class 'Bluetooth').
     """
-    device = find_device(devices, predicate)
+    bluetooth_devices = [d for d in devices if (d.get("DeviceClass") or "").upper() == "BLUETOOTH"]
+    device = find_device(bluetooth_devices, predicate)
     if device is not None:
         return device
     try:
@@ -363,7 +372,14 @@ def check_wifi_via_windows_update(devices, board, laptop):
     """
     wifi_device = find_device(
         devices,
-        lambda d: d.get("VendorID") not in ("8086", "8087", "10EC")
+        # DeviceClass == "NET" is load-bearing, not just belt-and-suspenders:
+        # confirmed live, a Razer wireless mouse/keyboard USB dongle reports
+        # DeviceClass "HIDCLASS"/"MOUSE" but names itself e.g. "Razer
+        # HyperPolling Wireless Dongle" -- without the class check it matched
+        # the keyword/vendor filter below and shadowed the real WiFi adapter
+        # (which sorts later in the device list), so no WiFi check ran at all.
+        lambda d: (d.get("DeviceClass") or "").upper() == "NET"
+        and d.get("VendorID") not in ("8086", "8087", "10EC")
         and "BLUETOOTH" not in d.get("DeviceName", "").upper()  # "Wireless" also matches Bluetooth devices
         and any(kw in d.get("DeviceName", "").upper() for kw in ("WI-FI", "WIRELESS", "WLAN")),
     )

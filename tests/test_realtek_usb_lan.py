@@ -17,6 +17,7 @@ def _device(driver_version, driver_date=None):
         "DeviceName": DEVICE_NAME,
         "DriverVersion": driver_version,
         "DriverDate": driver_date,
+        "DeviceClass": "NET",
     }
 
 

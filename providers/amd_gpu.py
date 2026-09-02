@@ -63,6 +63,7 @@ class AmdGpuProvider(AmdChipsetProvider):
         return (
             device.get("VendorID") == "1002"
             and any(kw in device.get("DeviceName", "").upper() for kw in self.vendor_match_keywords)
+            and (device.get("DeviceClass") or "").upper() == "DISPLAY"
         )
 
     def get_latest(self, device: dict = None) -> dict | None:

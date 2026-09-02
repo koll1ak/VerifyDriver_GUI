@@ -22,7 +22,8 @@ def _find_audio_device(devices):
     """
     audio_device = find_device(
         devices,
-        lambda d: d.get("VendorID") in ("10EC", "0BDA") and "AUDIO" in d.get("DeviceName", "").upper(),
+        lambda d: d.get("VendorID") in ("10EC", "0BDA") and "AUDIO" in d.get("DeviceName", "").upper()
+        and (d.get("DeviceClass") or "").upper() == "MEDIA",
     )
     if audio_device is None:
         # Win32_PnPSignedDriver sometimes doesn't see the audio function
@@ -34,7 +35,10 @@ def _find_audio_device(devices):
         except Exception as e:
             print(f"[Audio] fallback lookup error: {classify_error(e)}", file=sys.stderr)
             fallback_devices = []
-        audio_device = find_device(fallback_devices, lambda d: "AUDIO" in d.get("DeviceName", "").upper())
+        audio_device = find_device(
+            fallback_devices,
+            lambda d: "AUDIO" in d.get("DeviceName", "").upper() and (d.get("DeviceClass") or "").upper() == "MEDIA",
+        )
     return audio_device
 
 
@@ -226,11 +230,11 @@ def check_audio(devices, board, laptop):
             # Gigabyte/ASUS already use below when the USB-specific INF
             # isn't present.
             current_version_getter=lambda: get_installed_inf_version("rtdusbad")
-            or find_device_driver_version(devices, "10EC", ("AUDIO",))
-            or find_device_driver_version(devices, "0BDA", ("AUDIO",)),
+            or find_device_driver_version(devices, "10EC", ("AUDIO",), device_class="MEDIA")
+            or find_device_driver_version(devices, "0BDA", ("AUDIO",), device_class="MEDIA"),
             current_date_getter=lambda: get_installed_inf_date("rtdusbad") or (
-                find_device_by_vendor_and_keywords(devices, "10EC", ("AUDIO",))
-                or find_device_by_vendor_and_keywords(devices, "0BDA", ("AUDIO",))
+                find_device_by_vendor_and_keywords(devices, "10EC", ("AUDIO",), device_class="MEDIA")
+                or find_device_by_vendor_and_keywords(devices, "0BDA", ("AUDIO",), device_class="MEDIA")
                 or {}
             ).get("DriverDate"),
         ),
@@ -242,11 +246,11 @@ def check_audio(devices, board, laptop):
             # confirmed live: the site's version column (e.g. "6.0.9927.1")
             # is in the same dotted format WMI reports for the installed
             # driver, so a direct comparison is meaningful
-            current_version_getter=lambda: find_device_driver_version(devices, "10EC", ("AUDIO",))
-            or find_device_driver_version(devices, "0BDA", ("AUDIO",)),
+            current_version_getter=lambda: find_device_driver_version(devices, "10EC", ("AUDIO",), device_class="MEDIA")
+            or find_device_driver_version(devices, "0BDA", ("AUDIO",), device_class="MEDIA"),
             current_date_getter=lambda: (
-                find_device_by_vendor_and_keywords(devices, "10EC", ("AUDIO",))
-                or find_device_by_vendor_and_keywords(devices, "0BDA", ("AUDIO",))
+                find_device_by_vendor_and_keywords(devices, "10EC", ("AUDIO",), device_class="MEDIA")
+                or find_device_by_vendor_and_keywords(devices, "0BDA", ("AUDIO",), device_class="MEDIA")
                 or {}
             ).get("DriverDate"),
         ),
@@ -259,11 +263,11 @@ def check_audio(devices, board, laptop):
             # is in the same format WMI reports for the installed
             # driver, unlike the old HTML scraper's page which had no
             # reliable version-comparable source at all
-            current_version_getter=lambda: find_device_driver_version(devices, "10EC", ("AUDIO",))
-            or find_device_driver_version(devices, "0BDA", ("AUDIO",)),
+            current_version_getter=lambda: find_device_driver_version(devices, "10EC", ("AUDIO",), device_class="MEDIA")
+            or find_device_driver_version(devices, "0BDA", ("AUDIO",), device_class="MEDIA"),
             current_date_getter=lambda: (
-                find_device_by_vendor_and_keywords(devices, "10EC", ("AUDIO",))
-                or find_device_by_vendor_and_keywords(devices, "0BDA", ("AUDIO",))
+                find_device_by_vendor_and_keywords(devices, "10EC", ("AUDIO",), device_class="MEDIA")
+                or find_device_by_vendor_and_keywords(devices, "0BDA", ("AUDIO",), device_class="MEDIA")
                 or {}
             ).get("DriverDate"),
         ),

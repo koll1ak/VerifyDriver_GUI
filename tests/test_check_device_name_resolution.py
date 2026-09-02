@@ -27,7 +27,7 @@ class CheckDeviceNameResolutionTests(unittest.TestCase):
         devices = [{
             "DeviceID": "PCI\\VEN_8086&DEV_15F2", "DeviceName": "Ethernet Controller",
             "DriverVersion": "1.0.0.0", "DriverDate": GENERIC_DATE,
-            "VendorID": "8086", "DeviceID_PCI": "15F2",
+            "VendorID": "8086", "DeviceID_PCI": "15F2", "DeviceClass": "NET",
         }]
         result = check_intel_lan(devices, board={}, laptop={})
         self.assertEqual(result.device, "I219 Ethernet")
@@ -50,7 +50,7 @@ class CheckDeviceNameResolutionTests(unittest.TestCase):
         devices = [{
             "DeviceID": "USB\\VID_0489&PID_E10A", "DeviceName": "Generic Bluetooth Adapter",
             "DriverVersion": "10.0.26100.8972", "DriverDate": GENERIC_DATE,
-            "VendorID": "0489", "DeviceID_PCI": "E10A",
+            "VendorID": "0489", "DeviceID_PCI": "E10A", "DeviceClass": "BLUETOOTH",
         }]
         result = check_bluetooth_via_windows_update(devices, board={}, laptop={})
 
@@ -73,7 +73,7 @@ class CheckDeviceNameResolutionTests(unittest.TestCase):
         devices = [{
             "DeviceID": "PCI\\VEN_168C&DEV_003E", "DeviceName": "Generic Wireless Network Adapter",
             "DriverVersion": "12.0.0.1000", "DriverDate": GENERIC_DATE,
-            "VendorID": "168C", "DeviceID_PCI": "003E",
+            "VendorID": "168C", "DeviceID_PCI": "003E", "DeviceClass": "NET",
         }]
         result = check_wifi_via_windows_update(devices, board={}, laptop={})
 
@@ -85,6 +85,32 @@ class CheckDeviceNameResolutionTests(unittest.TestCase):
         )
         self.assertEqual(result.device, "Qualcomm Atheros Communications")
         self.assertIn("Qualcomm Atheros Communications", result.display_line)
+
+    @patch("checks.network.MsCatalogProvider")
+    @patch("checks.common.hardware_ids.lookup", return_value=("Qualcomm Atheros Communications", None))
+    def test_wifi_via_windows_update_ignores_non_net_wireless_dongle(self, _mock_lookup, mock_provider_cls):
+        # regression test: a Razer HyperPolling wireless mouse/keyboard USB
+        # dongle names itself "Razer HyperPolling Wireless Dongle" (matching
+        # the WIRELESS keyword) but its DeviceClass is HIDCLASS, not NET --
+        # confirmed live, this shadowed the real WiFi adapter (which sorted
+        # later in the device list) and the app reported the dongle instead
+        # of ever finding the WiFi card.
+        mock_provider_cls.return_value.get_latest.return_value = None
+        devices = [
+            {
+                "DeviceID": "USB\\VID_1532&PID_00B3&MI_02", "DeviceName": "Razer HyperPolling Wireless Dongle",
+                "DriverVersion": "1.0.0.0", "DriverDate": GENERIC_DATE,
+                "VendorID": "1532", "DeviceID_PCI": "00B3", "DeviceClass": "HIDCLASS",
+            },
+            {
+                "DeviceID": "PCI\\VEN_17CB&DEV_1107", "DeviceName": "Qualcomm FastConnect 7800 Wi-Fi 7 Network Adapter",
+                "DriverVersion": "3.1.0.1647", "DriverDate": GENERIC_DATE,
+                "VendorID": "17CB", "DeviceID_PCI": "1107", "DeviceClass": "NET",
+            },
+        ]
+        result = check_wifi_via_windows_update(devices, board={}, laptop={})
+
+        self.assertEqual(result.device, "Qualcomm Atheros Communications")
 
 
 if __name__ == "__main__":

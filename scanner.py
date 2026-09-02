@@ -12,7 +12,7 @@ from ps_utils import run_powershell
 PS_COMMAND = (
     "Get-CimInstance Win32_PnPSignedDriver | "
     "Where-Object { $_.DeviceID -match '^(PCI|USB|HDAUDIO)' -and $_.DeviceName } | "
-    "Select-Object DeviceName, DeviceID, DriverVersion, DriverDate, Manufacturer | "
+    "Select-Object DeviceName, DeviceID, DriverVersion, DriverDate, Manufacturer, DeviceClass | "
     "ConvertTo-Json -Depth 3"
 )
 
@@ -31,7 +31,7 @@ PS_COMMAND_PNP_ENRICH = (
     "          -KeyName 'DEVPKEY_Device_DriverDate' -ErrorAction SilentlyContinue).Data; "
     "  [PSCustomObject]@{{ "
     "    DeviceName = $_.FriendlyName; DeviceID = $_.InstanceId; "
-    "    DriverVersion = $ver; DriverDate = $date; Status = $_.Status "
+    "    DriverVersion = $ver; DriverDate = $date; Status = $_.Status; DeviceClass = $_.Class "
     "  }} "
     "}} | ConvertTo-Json -Depth 3"
 )
@@ -69,6 +69,7 @@ def get_installed_devices() -> list[dict]:
         "DriverVersion": "32.0.15.7283",
         "DriverDate": "...",
         "Manufacturer": "NVIDIA",
+        "DeviceClass": "DISPLAY",
         "VendorID": "10DE",
         "DeviceID_PCI": "2704",
     }

@@ -199,37 +199,45 @@ def safe_get_latest(label: str, provider, device=None):
     return True, latest
 
 
-def find_device_by_vendor_and_keywords(devices, vendor_id: str, name_keywords):
+def find_device_by_vendor_and_keywords(devices, vendor_id: str, name_keywords, device_class: str | None = None):
     """
     Looks among devices for a match on VendorID and a name substring,
     returns the device dict itself (or None) — use this instead of
     find_device_driver_version when the caller also needs DeviceName/
     DriverDate/etc., not just the version.
+
+    device_class: optionally also require Win32_PnPSignedDriver's
+    DeviceClass (e.g. "NET", "MEDIA") to match — a name/vendor keyword
+    alone isn't unique across a vendor's whole product line (confirmed
+    live: a Razer wireless mouse dongle matched a WiFi check's VendorID+
+    "WIRELESS" keyword filter purely because its own class, HIDCLASS,
+    was never checked). Optional and case-insensitive, since not every
+    caller's target category has been verified against real hardware.
     """
     return find_device(
         devices,
         lambda d: d.get("VendorID") == vendor_id and any(
             kw in d.get("DeviceName", "").upper() for kw in name_keywords
-        ),
+        ) and (device_class is None or (d.get("DeviceClass") or "").upper() == device_class.upper()),
     )
 
 
-def find_device_driver_version(devices, vendor_id: str, name_keywords):
+def find_device_driver_version(devices, vendor_id: str, name_keywords, device_class: str | None = None):
     """Looks among devices for a match on VendorID and a name substring, returns DriverVersion."""
-    device = find_device_by_vendor_and_keywords(devices, vendor_id, name_keywords)
+    device = find_device_by_vendor_and_keywords(devices, vendor_id, name_keywords, device_class=device_class)
     return device.get("DriverVersion") if device else None
 
 
 def find_intel_wifi_device(devices):
     """
     Looks among devices for the Intel WiFi adapter (vendor 8086, name
-    containing "WI-FI"/"WIRELESS"). Shared by check_intel_wifi (its own
-    device) and check_intel_bluetooth (as a fallback source for the chip
-    code, since Bluetooth's own Windows device name is typically generic)
-    so both stay in sync instead of drifting if one's keyword list is
-    edited without the other.
+    containing "WI-FI"/"WIRELESS", DeviceClass "NET"). Shared by
+    check_intel_wifi (its own device) and check_intel_bluetooth (as a
+    fallback source for the chip code, since Bluetooth's own Windows
+    device name is typically generic) so both stay in sync instead of
+    drifting if one's keyword list is edited without the other.
     """
-    return find_device_by_vendor_and_keywords(devices, "8086", ("WI-FI", "WIRELESS"))
+    return find_device_by_vendor_and_keywords(devices, "8086", ("WI-FI", "WIRELESS"), device_class="NET")
 
 
 def laptop_model_if_vendor(laptop: dict, vendor_keyword: str, model_field: str):

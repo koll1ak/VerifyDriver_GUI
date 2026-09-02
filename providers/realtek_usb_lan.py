@@ -25,4 +25,5 @@ class RealtekUsbLanProvider(RealtekCategoryProvider):
             device.get("VendorID") in ("10EC", "0BDA")
             and "USB" in device.get("DeviceID", "").upper()
             and "FAMILY CONTROLLER" in device.get("DeviceName", "").upper()
+            and (device.get("DeviceClass") or "").upper() == "NET"
         )

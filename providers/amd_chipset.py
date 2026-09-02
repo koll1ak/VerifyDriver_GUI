@@ -102,6 +102,11 @@ class AmdChipsetProvider(DriverProvider):
                 kw in device.get("DeviceName", "").upper()
                 for kw in self.vendor_match_keywords
             )
+            # chipset devices (SMBus, PCI/ISA bridges, etc.) are Windows'
+            # "System devices" class -- confirmed live -- unlike
+            # AmdGpuProvider below, which overrides matches() entirely and
+            # isn't affected by this
+            and (device.get("DeviceClass") or "").upper() == "SYSTEM"
         )
 
     def get_latest(self, device: dict = None) -> dict | None:

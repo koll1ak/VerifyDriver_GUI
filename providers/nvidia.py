@@ -89,6 +89,8 @@ class NvidiaProvider(DriverProvider):
         # GPU. Require a word characteristic of a graphics card.
         if device.get("VendorID") != "10DE":
             return False
+        if (device.get("DeviceClass") or "").upper() != "DISPLAY":
+            return False
         name_upper = device.get("DeviceName", "").upper()
         return any(kw in name_upper for kw in ("GEFORCE", "RTX", "GTX", "QUADRO", "NVS", "TESLA"))
 
