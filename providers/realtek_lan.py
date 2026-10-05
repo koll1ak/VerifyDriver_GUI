@@ -132,13 +132,17 @@ class RealtekLanProvider(RealtekCategoryProvider):
 
     def matches(self, device: dict) -> bool:
         # Realtek's VEN_10EC is used for both audio and LAN — we exclude
-        # audio devices by checking for "FAMILY CONTROLLER" in the name
-        # (that's what Windows calls this lineup's network chips) and by
-        # requiring DeviceClass "NET" (confirmed live: Realtek's own audio
-        # codec is a separate class, "MEDIA" — belt-and-suspenders with
-        # the name check, not a replacement for it)
+        # audio devices by checking the name (Realtek's own driver calls
+        # this lineup "... Family Controller"; confirmed live, Windows'
+        # inbox driver for an RTL8126 instead names it "Realtek(R) PCI(e)
+        # Ethernet Controller" — both must match, or a machine still on
+        # the inbox driver, the one most in need of an update, is
+        # silently skipped) and by requiring DeviceClass "NET" (confirmed
+        # live: Realtek's own audio codec is a separate class, "MEDIA" —
+        # belt-and-suspenders with the name check, not a replacement for it)
+        name = device.get("DeviceName", "").upper()
         return (
             device.get("VendorID") == "10EC"
-            and "FAMILY CONTROLLER" in device.get("DeviceName", "").upper()
+            and ("FAMILY CONTROLLER" in name or "ETHERNET CONTROLLER" in name)
             and (device.get("DeviceClass") or "").upper() == "NET"
         )

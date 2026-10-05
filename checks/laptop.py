@@ -19,6 +19,7 @@ from providers.lg_support import LgSupportProvider
 from providers.microsoft_surface import surface_drivers_url
 from providers.asus_bios import AsusBiosProvider
 from providers.asus_laptop_driver import AsusLaptopDriverProvider
+from providers.realtek_lan import RealtekLanProvider
 
 
 def _asus_laptop_bios_versions_match(current: str, latest: str) -> bool:
@@ -214,10 +215,9 @@ def check_acer_lan(devices, board, laptop):
     # by the official checks (check_realtek_lan / check_intel_lan) — we
     # don't duplicate them, and we don't substitute a version from
     # Acer's repackaged page instead of the chip vendor's official source
-    has_realtek_lan = find_device(
-        devices, lambda d: d.get("VendorID") == "10EC" and "FAMILY CONTROLLER" in d.get("DeviceName", "").upper()
-        and (d.get("DeviceClass") or "").upper() == "NET"
-    ) is not None
+    # same matcher as check_realtek_lan itself, so "already covered"
+    # can't drift from what that check actually detects
+    has_realtek_lan = find_device(devices, RealtekLanProvider()) is not None
     has_intel_lan = find_device_driver_version(
         devices, "8086", ("ETHERNET", "I219", "I225", "I226", "I210", "I350"), device_class="NET"
     ) is not None
@@ -354,10 +354,9 @@ def check_asus_laptop_networking(devices, board, laptop):
         devices, lambda d: any(kw in d.get("DeviceName", "").upper() for kw in ("WI-FI", "WIRELESS", "WLAN"))
         and (d.get("DeviceClass") or "").upper() == "NET"
     ) is not None
-    has_realtek_lan = find_device(
-        devices, lambda d: d.get("VendorID") == "10EC" and "FAMILY CONTROLLER" in d.get("DeviceName", "").upper()
-        and (d.get("DeviceClass") or "").upper() == "NET"
-    ) is not None
+    # same matcher as check_realtek_lan itself, so "already covered"
+    # can't drift from what that check actually detects
+    has_realtek_lan = find_device(devices, RealtekLanProvider()) is not None
     if has_any_wifi or has_realtek_lan:
         return None  # already covered by check_intel_wifi/check_wifi_via_windows_update/check_realtek_lan
 
