@@ -1,4 +1,7 @@
-from checks.common import find_device, find_device_by_vendor_and_keywords, safe_get_latest, report, resolve_device_name
+from checks.common import (
+    find_device, find_device_by_vendor_and_keywords, safe_get_latest, report, resolve_device_name,
+    no_downgrade_match,
+)
 from providers.nvidia import NvidiaProvider, get_current_nvidia_version
 from providers.amd_gpu import AmdGpuProvider
 from providers.intel_download import IntelDownloadCenterProvider, intel_download_url
@@ -36,6 +39,14 @@ def _is_integrated_amd_gpu(device_name: str) -> bool:
     return device_name.strip().upper().endswith("GRAPHICS")
 
 
+# All GPU checks compare numerically with no_downgrade_match rather than by
+# string equality: vendors' driver APIs/pages regularly lag behind what's
+# actually installed (hotfix drivers, Windows Update, the GeForce/Adrenalin
+# app pushing a release before the manual-lookup endpoint lists it), and a
+# plain "!=" then recommended "updating" to an OLDER driver (seen in
+# practice: installed NVIDIA 621.35, site listing 621.24).
+
+
 def check_nvidia(devices, board, laptop):
     provider = NvidiaProvider()
     device = find_device(devices, provider)
@@ -46,7 +57,8 @@ def check_nvidia(devices, board, laptop):
     if not ok:
         latest = None
     return report(
-        "NVIDIA", latest, get_current_nvidia_version(), page_url=NVIDIA_DRIVERS_PAGE_URL,
+        "NVIDIA", latest, get_current_nvidia_version(), comparator=no_downgrade_match,
+        page_url=NVIDIA_DRIVERS_PAGE_URL,
         device_name=resolve_device_name(device), current_date=device.get("DriverDate"),
     )
 
@@ -77,7 +89,7 @@ def check_amd_gpu(devices, board, laptop):
     if _is_integrated_amd_gpu(amd_device_name):
         amd_device_name += " (Integrated)"
     return report(
-        "AMD GPU", latest, current, page_url=AMD_GPU_PAGE_URL,
+        "AMD GPU", latest, current, comparator=no_downgrade_match, page_url=AMD_GPU_PAGE_URL,
         device_name=amd_device_name, current_date=amd_gpu_device.get("DriverDate") if current else None,
     )
 
@@ -103,7 +115,7 @@ def check_intel_gpu(devices, board, laptop):
         latest = None
     # for Intel, the Windows version usually matches the marketing version directly
     return report(
-        "Intel GPU", latest, current,
+        "Intel GPU", latest, current, comparator=no_downgrade_match,
         page_url=intel_download_url(INTEL_GPU_DOWNLOAD_ID, INTEL_GPU_SLUG),
         device_name=resolve_device_name(device), current_date=device.get("DriverDate"),
     )

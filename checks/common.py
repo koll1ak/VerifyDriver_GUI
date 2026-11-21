@@ -440,14 +440,31 @@ def report(
         # current_date only when it actually holds a real date — a
         # garbage/placeholder current_date shouldn't win over a genuinely
         # parseable available_date just because it's non-empty.
-        shared_date = current_date if _parse_valid_date(current_date) else available_date
+        # Except when the installed version is numerically NEWER than the
+        # site's — no_downgrade_match also calls that "up to date", but
+        # then they're two different releases with genuinely different
+        # dates. (Versions that don't parse as plain numbers, e.g. Realtek's
+        # "115X.10.20" placeholder format, are left to the comparator's
+        # judgment and still share. Only the parts both versions have are
+        # compared: an installed "10.67.20.407" against the site's
+        # "10.67.20" is the same release plus a build suffix, not newer.)
+        current_t = _parse_version_tuple(current)
+        latest_t = _parse_version_tuple(latest["version"])
+        installed_is_newer = False
+        if current_t is not None and latest_t is not None:
+            common = min(len(current_t), len(latest_t))
+            installed_is_newer = current_t[:common] > latest_t[:common]
+        if not installed_is_newer:
+            current_date = available_date = (
+                current_date if _parse_valid_date(current_date) else available_date
+            )
         return build_result(
             label, display_line, current=current, available=latest["version"], status="Up to date",
             # even when up to date, link to the source page if we have one —
             # lets the GUI table offer a "check it yourself" link on every
             # row, not just when an update was found
             url=latest.get("page_url") or latest.get("url"), device_name=device_name,
-            current_date=shared_date, available_date=shared_date,
+            current_date=current_date, available_date=available_date,
         )
 
     display_url = latest.get("page_url") or latest.get("url") or ""
